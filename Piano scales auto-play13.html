@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Full Generative Piano Suite</title>
+    <style>
+        /* ... (CSS is the same as your previous version, with minor additions) ... */
+        :root {
+            --white-key-width: 60px;
+            --white-key-height: 220px;
+            --black-key-width: 38px;
+            --black-key-height: 140px;
+            --key-border-radius: 3px;
+        }
+
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 10px;
+            padding-bottom: 20px;
+            margin: 0;
+            background-color: #333;
+            color: #eee;
+            overscroll-behavior-y: contain;
+        }
+
+        h1 {
+            margin-top: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 1.5em;
+        }
+
+        .master-controls-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px 15px; /* row-gap column-gap */
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            width: 95vw;
+            max-width: 1000px; 
+            box-sizing: border-box;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 5px;
+        }
+        .control-group-horizontal {
+             flex-direction: row;
+             align-items: center;
+        }
+        .control-group label {
+            font-size: 0.85em;
+            color: #ccc;
+            margin-right: 5px;
+        }
+        .control-group select,
+        .control-group input[type="text"],
+        .control-group input[type="number"],
+        .control-group input[type="range"],
+        .control-group button {
+            padding: 6px 8px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background-color: #444;
+            color: #eee;
+            font-size: 0.9em;
+        }
+        .control-group input[type="text"] { width: 100px; } /* Adjusted width */
+        #semistepsSumDisplay { font-size: 0.8em; color: #8f8; padding-left: 5px; }
+        #semistepsSumDisplay.non-octave { color: #f90; }
+
+        .control-group select { min-width: 120px; } 
+        .control-group button { cursor: pointer; background-color: #5a5a5a; padding: 6px 10px; }
+        .control-group button:hover { background-color: #6b6b6b; }
+        
+        #autoPlayBtn.playing, #midiOutToggleBtn.active, #midiInToggleBtn.active { 
+            background-color: #f44336; 
+            color: white;
+        }
+        #autoPlayBtn.playing:hover, #midiOutToggleBtn.active:hover, #midiInToggleBtn.active:hover {
+            background-color: #d32f2f;
+        }
+
+
+        #zoomSlider, #volumeSlider, #tempoSlider { width: 120px; cursor: pointer; } 
+        #tempoInput { width: 50px; margin-left: 5px; -moz-appearance: textfield; }
+        #tempoInput::-webkit-outer-spin-button, #tempoInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+        .piano-container {
+            width: 95vw;
+            max-width: 1000px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 10px 0;
+            background-color: #222;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            scrollbar-width: auto; 
+            scrollbar-color: #666 #333;
+        }
+        .piano-container::-webkit-scrollbar { height: 12px; }
+        .piano-container::-webkit-scrollbar-track { background: #333; border-radius: 6px; }
+        .piano-container::-webkit-scrollbar-thumb { background-color: #666; border-radius: 6px; }
+        .piano-container::-webkit-scrollbar-thumb:hover { background-color: #777; }
+
+        .piano-keyboard {
+            display: flex;
+            position: relative;
+            height: var(--white-key-height);
+            padding: 0 5px;
+        }
+
+        .key {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            box-sizing: border-box;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            padding-bottom: 8px;
+            font-size: 0.7em;
+            font-weight: bold;
+            transition: background-color 0.1s ease-out;
+            text-align: center;
+        }
+
+        .white-key {
+            width: var(--white-key-width);
+            height: var(--white-key-height);
+            background-color: #f8f8f8;
+            border: 1px solid #bbb;
+            border-bottom-left-radius: var(--key-border-radius);
+            border-bottom-right-radius: var(--key-border-radius);
+            color: #333;
+            z-index: 1;
+            margin-right: -1px;
+        }
+        .white-key.pressed:not(.key-disabled),
+        .white-key.chord-note-active:not(.key-disabled) { background-color: #d0d0d0; }
+        .white-key:active:not(.key-disabled) { background-color: #c0c0c0; }
+        .white-key.auto-playing-note:not(.key-disabled) { background-color: #add8e6; }
+
+
+        .black-key {
+            position: absolute;
+            width: var(--black-key-width);
+            height: var(--black-key-height);
+            background-color: #333;
+            border: 1px solid #222;
+            border-bottom-left-radius: var(--key-border-radius);
+            border-bottom-right-radius: var(--key-border-radius);
+            color: #eee;
+            z-index: 2;
+            top: 0;
+        }
+        .black-key.pressed:not(.key-disabled),
+        .black-key.chord-note-active:not(.key-disabled) { background-color: #505050; }
+        .black-key:active:not(.key-disabled) { background-color: #454545; }
+        .black-key.auto-playing-note:not(.key-disabled) { background-color: #4682b4; }
+        
+        .key-label { pointer-events: none; line-height: 1.2; }
+
+        .key.key-disabled { cursor: not-allowed; }
+        .white-key.key-disabled { background-color: #aaa !important; color: #777 !important; border-color: #999; }
+        .black-key.key-disabled { background-color: #666 !important; color: #999 !important; border-color: #555; }
+        .key.key-disabled .key-label { opacity: 0.7; }
+
+        .info-display-area {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            width: 90vw;
+            max-width: 900px;
+            box-sizing: border-box;
+            text-align: left;
+        }
+        .info-display-area h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+            color: #ddd;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+        }
+        #scaleNotesDisplay, #chordButtonsDisplay, #currentlyPlayingNotesDisplay {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            font-size: 0.9em;
+            color: #ccc;
+            min-height: 2em; 
+        }
+        .scale-note-item, .playing-note-item {
+            padding: 3px 6px;
+            background-color: #383838;
+            border-radius: 3px;
+        }
+        #chordNameDisplay {
+            font-size: 1.1em; padding: 5px 10px; display: inline-block; min-width: 100px; text-align: center;
+        }
+        .chord-button {
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+        }
+        .chord-button:hover { background-color: #45a049; }
+        .chord-button:active { background-color: #3e8e41; }
+        
+        .tetrachord-maker-container {
+            flex-direction: column;
+            align-items: stretch;
+            margin-top: 15px;
+        }
+        .tetrachord-maker-container h3 {
+            text-align: center; margin: 0 0 10px 0; font-size: 1.1em; color: #ddd; border: none;
+        }
+        .tetrachord-controls {
+            display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 10px;
+        }
+
+
+        .info { margin-top: 20px; font-size: 0.9em; color: #ccc; text-align: center; max-width: 90vw; }
+    </style>
+</head>
+<body>
+
+    <h1>Full Generative Piano Suite</h1>
+
+    <div class="master-controls-container">
+        <div class="control-group">
+            <label for="rootNoteSelect">Root Note:</label>
+            <div><select id="rootNoteSelect"></select><button id="randomRootBtn" title="Random Root">🎲</button></div>
+        </div>
+        <div class="control-group">
+            <label for="scaleSelect">Scale:</label>
+            <div><select id="scaleSelect"></select><button id="randomScaleBtn" title="Random Scale">🎲</button></div>
+        </div>
+        <div class="control-group control-group-horizontal">
+            <label for="semistepsInput">Steps:</label>
+            <input type="text" id="semistepsInput" title="e.g., 2212221"><span id="semistepsSumDisplay"></span>
+        </div>
+        <div class="control-group control-group-horizontal">
+            <label for="zoomSlider">Zoom:</label>
+            <input type="range" id="zoomSlider" min="0.3" max="1.5" step="0.05" value="1">
+        </div>
+         <div class="control-group">
+            <label for="autoPlayBtn">Generative:</label>
+            <button id="autoPlayBtn">Start Generative Play</button>
+        </div>
+        <div class="control-group">
+            <label>Scales IO:</label> 
+            <div>
+                <button id="exportScalesBtn">Export</button>
+                <button id="importScalesBtn">Import</button>
+                <input type="file" id="scalesFileInput" accept=".json" style="display: none;">
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Scale Set:</label>
+            <button id="scaleSetToggleBtn">Switch to Zeitler Scales</button>
+        </div>
+        <div class="control-group">
+            <label for="toggle88KeysBtn">Keyboard:</label>
+            <button id="toggle88KeysBtn">Switch to 88 Keys</button>
+        </div>
+        <div class="control-group">
+            <label>Sounds IO:</label> 
+            <div>
+                <button id="exportSoundsBtn">Export</button>
+                <button id="importSoundsBtn">Import</button>
+                <input type="file" id="soundsFileInput" accept=".json" style="display: none;">
+            </div>
+        </div>
+        <div class="control-group">
+            <label for="midiOutSelect">MIDI Out:</label> 
+            <div>
+                <select id="midiOutSelect" disabled><option value="">(MIDI Disabled)</option></select>
+                <button id="midiOutToggleBtn">Enable MIDI</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label for="midiInSelect">MIDI In:</label> 
+            <div>
+                <select id="midiInSelect" disabled><option value="">(MIDI Disabled)</option></select>
+                <button id="midiInToggleBtn">Enable MIDI</button>
+            </div>
+        </div>
+        <div class="control-group control-group-horizontal"> 
+            <label for="volumeSlider">Volume:</label>
+            <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.18">
+        </div>
+        <div class="control-group control-group-horizontal"> 
+            <label for="tempoSlider">Tempo (BPM):</label>
+            <input type="range" id="tempoSlider" min="40" max="200" step="1" value="80"> 
+            <input type="number" id="tempoInput" min="40" max="200" value="80">
+        </div>
+        <div class="control-group"> 
+            <label for="soundTypeSelect">Sound Type:</label>
+            <select id="soundTypeSelect">
+                <!-- Options will be populated by JavaScript -->
+            </select>
+        </div>
+        <div class="control-group"> 
+            <label>Sampler:</label>
+            <div>
+                <button id="loadSampleBtn">Load C4 Sample</button>
+                <input type="file" id="sampleFileInput" accept="audio/*" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <div class="tetrachord-maker-container master-controls-container">
+        <h3>Make a Scale from Tetrachords</h3>
+        <div class="tetrachord-controls">
+            <div class="control-group">
+                <label for="lowerTetrachordSelect">Lower Tetrachord:</label>
+                <select id="lowerTetrachordSelect"></select>
+            </div>
+            <div class="control-group" style="align-items: center;">
+                <label>Middle Step:</label>
+                <span id="middleStepDisplay" style="font-weight: bold; font-size: 1.2em; color: #8f8;">+2</span>
+            </div>
+            <div class="control-group">
+                <label for="upperTetrachordSelect">Upper Tetrachord:</label>
+                <select id="upperTetrachordSelect"></select>
+            </div>
+            <button id="createScaleFromTetrachordsBtn" style="padding: 8px 15px;">Create Scale</button>
+        </div>
+    </div>
+
+
+    <div class="piano-container" id="pianoContainer">
+        <div class="piano-keyboard" id="pianoKeyboard"></div>
+    </div>
+
+    <div class="info-display-area">
+        <h3>Chord Inspector:</h3>
+        <div id="chordNameDisplay" class="scale-note-item">--</div>
+    </div>
+    <div class="info-display-area">
+        <h3>Scale Notes (1 Octave):</h3>
+        <div id="scaleNotesDisplay"></div>
+    </div>
+    <div class="info-display-area">
+        <h3>Diatonic Triads:</h3>
+        <div id="chordButtonsDisplay"></div>
+    </div>
+    <div class="info-display-area"> 
+        <h3>Currently Playing (Auto):</h3>
+        <div id="currentlyPlayingNotesDisplay"></div>
+    </div>
+
+
+    <p class="info">
+        Select root & scale. Touch/click keys, chord buttons, or start generative play.
+        <br>3 Octaves (C3-B5). Play with your computer keyboard (Z/X/C and Q/W/E rows) or a MIDI device.
+    </p>
+
+    <script>
+        let audioContext;
+        let masterVolumeNode; 
+        let effectiveBaseTempoMs = 750; // Default: 60000 / 80 BPM
+
+        const SOUND_DURATION = 1.8; 
+        const NOTE_RELATIVE_MAX_GAIN = 1.0; 
+        const DEFAULT_ATTACK_TIME = 0.02;  
+        const DEFAULT_DECAY_TIME = 0.3;    
+        const DEFAULT_SUSTAIN_LEVEL = 0.6; 
+        const DEFAULT_ADSR_RELEASE_CONSTANT = 0.1;
+
+        // Auto Play Specifics (remains the same)
+        const RHYTHM_PATTERNS = { "standard": [0.25, 0.5, 0.5, 0.5, 0.75, 1, 1, 1, 1, 1, 1.5, 2], "blues_swing": [0.75, 0.25, 1, 0.75, 0.25, 1.5, 1, 0.75, 0.25], "reggae_skank": [1, 0.5, 0.5, 1, 0.5, 0.5, 1, 0.5, 0.5], "jazz_swing": [0.66, 0.33, 1, 0.66, 0.33, 1.5, 0.66, 0.33, 1], "latino_sync": [0.5, 0.25, 0.25, 1, 0.5, 0.75, 0.25, 1.5, 0.5, 0.5] }; const RHYTHM_STYLE_PROBABILITY = 0.5; const MELODY_REPETITIONS = 2; const TRANSPOSITION_LEVEL_SEQUENCE = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]; const MIN_MELODIC_INTERVAL = 3; const MONORHYTHM_PROBABILITY = 0.1; const SCALE_RUN_PROBABILITY = 0.05; const SCALE_RUN_NOTE_DURATION_FACTOR = 0.30; const TIME_SIGNATURE_CONFIGS = [ { sig: "4/4", notesPerBar: 4, bars: 2 }, { sig: "3/4", notesPerBar: 3, bars: 2 }, { sig: "4/4", notesPerBar: 2, bars: 4 } ]; const SLOW_TEMPO_PROBABILITY = 0.2; const SLOW_TEMPO_MULTIPLIER = 1.6; const TEMPO_VARIATION_PERCENT = 0.03; const BASS_HARMONY_PROBABILITY = 0.4; const BASS_HARMONY_GAIN_SCALE = 0.5; const PROBABILITY_PLAY_CHORDAL = 0.7; const CHORD_VOICING_GAIN_SCALE = 0.6; const NOTE_REPETITION_PROBABILITY = 0.2; const MAX_NOTE_REPETITIONS = 2; const ARPEGGIO_PROBABILITY = 0.75; const ARPEGGIO_TYPES = [ [0, 2, 4], [0, 2, 4, 6] ]; const ARPEGGIO_NOTE_DURATION_FACTOR = 0.4; const BASS_ALTERNATION_PROBABILITY = 0.6; const REPEATING_CHORD_PROBABILITY = 0.3; const REPEATING_CHORD_DURATION_FACTOR = 0.75; const REPEATING_CHORD_DEGREES = [2, 4, 6]; const CHORD_TONE_MELODY_PROBABILITY = 0.8; 
+
+        // MIDI & Input Specifics
+        let midiAccess = null;
+        let currentMidiOutput = null;
+        let isMidiOutEnabled = false;
+        const activeMidiNotes = new Map(); 
+        const MIDI_BASE_VELOCITY = 80;         
+        const MIDI_VELOCITY_VARIATION_RANGE = 30; 
+        let isMidiInEnabled = false;
+        let currentMidiInput = null;
+        const activeComputerKeys = new Set();
+        const userHeldNotes = new Set(); // For chord detection
+        // C4-B4 white keys: z,x,c,v,b,n,m
+        // C4-B4 black keys: s,d,g,h,j
+        // C5-B5 white keys: q,w,e,r,t,y,u
+        // C5-B5 black keys: 2,3,5,6,7
+        const KEYBOARD_MAP = {
+            'z': 'C4', 's': 'C#4', 'x': 'D4', 'd': 'D#4', 'c': 'E4', 'v': 'F4', 
+            'g': 'F#4', 'b': 'G4', 'h': 'G#4', 'n': 'A4', 'j': 'A#4', 'm': 'B4',
+            'q': 'C5', '2': 'C#5', 'w': 'D5', '3': 'D#5', 'e': 'E5', 'r': 'F5',
+            '5': 'F#5', 't': 'G5', '6': 'G#5', 'y': 'A5', '7': 'A#5', 'u': 'B5',
+        };
+
+        const BASE_DIMENSIONS = { whiteKeyWidth: 60, whiteKeyHeight: 220, blackKeyWidth: 38, blackKeyHeight: 140, keyBorderRadius: 3 };
+        let is88KeyMode = false;
+
+        const noteFrequencies = {};
+        const ALL_NOTES_CHROMATIC = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+        const A4_FREQ = 440.0;
+        const A4_MIDI_NUMBER = 69;
+        for (let octave = 0; octave < 9; octave++) {
+            ALL_NOTES_CHROMATIC.forEach((noteBase, index) => {
+                const noteName = noteBase + octave;
+                const currentMidiNumber = 12 * (octave - 4) + (index - 9) + A4_MIDI_NUMBER;
+                noteFrequencies[noteName] = A4_FREQ * Math.pow(2, (currentMidiNumber - A4_MIDI_NUMBER) / 12);
+            });
+        }
+        
+        const keysData = [];
+        
+        // --- SCALE DATA ---
+        const BASIC_SCALES = [ { name: "Ionian (Major)", steps: "2212221" }, { name: "Dorian", steps: "2122212" }, { name: "Phrygian", steps: "1222122" }, { name: "Lydian", steps: "2221221" }, { name: "Mixolydian", steps: "2212212" }, { name: "Aeolian (Nat. Minor)", steps: "2122122" }, { name: "Locrian", steps: "1221222" }, { name: "Harmonic Minor", steps: "2122131" }, { name: "Melodic Minor (Asc.)", steps: "2122221" }, { name: "Major Pentatonic", steps: "22323" }, { name: "Minor Pentatonic", steps: "32232" }, { name: "Blues", steps: "321132" }, { name: "Chromatic", steps: "111111111111"}, { name: "Whole Tone", steps: "222222"}, { name: "Diminished (WH)", steps: "21212121"}, { name: "Diminished (HW)", steps: "12121212"}, { name: "Custom", steps: ""} ];
+        const ZEITLER_SCALES = [ { "name": "Ionian", "steps": "2212221" }, { "name": "Dorian", "steps": "2122212" }, { "name": "Phrygian", "steps": "1222122" }, { "name": "Lydian", "steps": "2221221" }, { "name": "Mixolydian", "steps": "2212212" }, { "name": "Aeolian", "steps": "2122122" }, { "name": "Locrian", "steps": "1221222" }, { "name": "Ionythian", "steps": "4122111" }, { "name": "Aeolyrian", "steps": "1221114" }, { "name": "Gorian", "steps": "2211141" }, { "name": "Aeolodian", "steps": "2111412" }, { "name": "Doptian", "steps": "1114122" }, { "name": "Aeraphian", "steps": "1141221" }, { "name": "Zacrian", "steps": "1412211" }, { "name": "Ionarian", "steps": "4113111" }, { "name": "Dynian", "steps": "1131114" }, { "name": "Zydian", "steps": "1311141" }, { "name": "Zathian", "steps": "3111411" }, { "name": "Radian", "steps": "1114113" }, { "name": "Stonian", "steps": "1141131" }, { "name": "Syptian", "steps": "1411311" }, { "name": "Aeolacrian", "steps": "4111311" }, { "name": "Zythian", "steps": "1113114" }, { "name": "Dyrian", "steps": "1131141" }, { "name": "Koptian", "steps": "1311411" }, { "name": "Thocrian", "steps": "3114111" }, { "name": "Aeolanian", "steps": "1141113" }, { "name": "Danian", "steps": "1411131" }, { "name": "Zogian", "steps": "4111221" }, { "name": "Epyrian", "steps": "1112214" }, { "name": "Lycrian", "steps": "1122141" }, { "name": "Daptian", "steps": "1221411" }, { "name": "Kygian", "steps": "2214111" }, { "name": "Mocrian", "steps": "2141112" }, { "name": "Zynian", "steps": "1411122" }, { "name": "Phrolian", "steps": "3221211" }, { "name": "Ionagian", "steps": "2212113" }, { "name": "Aeodian", "steps": "2121132" }, { "name": "Kycrian", "steps": "1211322" }, { "name": "Epygian", "steps": "2113221" }, { "name": "Zaptian", "steps": "1132212" }, { "name": "Kagian", "steps": "1322121" }, { "name": "Soptian", "steps": "3221112" }, { "name": "Ionyptian", "steps": "2211123" }, { "name": "Gyrian", "steps": "2111232" }, { "name": "Zalian", "steps": "1112322" }, { "name": "Stolian", "steps": "1123221" }, { "name": "Bylian", "steps": "1232211" }, { "name": "Zothian", "steps": "2322111" }, { "name": "Thonian", "steps": "3212211" }, { "name": "Phrorian", "steps": "2122113" }, { "name": "Stadian", "steps": "1221132" }, { "name": "Thodian", "steps": "2211321" }, { "name": "Dogian", "steps": "2113212" }, { "name": "Mixopyrian", "steps": "1132122" }, { "name": "Garian", "steps": "1321221" }, { "name": "Epathian", "steps": "3211311" }, { "name": "Mythian", "steps": "2113113" }, { "name": "Sogian", "steps": "1131132" }, { "name": "Gogian", "steps": "1311321" }, { "name": "Rothian", "steps": "3113211" }, { "name": "Katarian", "steps": "1132113" }, { "name": "Stylian", "steps": "1321131" }, { "name": "Stathian", "steps": "3211122" }, { "name": "Mixonyphian", "steps": "2111223" }, { "name": "Magian", "steps": "1112232" }, { "name": "Dadian", "steps": "1122321" }, { "name": "Aeolylian", "steps": "1223211" }, { "name": "Gycrian", "steps": "2232111" }, { "name": "Pyrian", "steps": "2321112" }, { "name": "Epogian", "steps": "3113112" }, { "name": "Lanian", "steps": "1131123" }, { "name": "Paptian", "steps": "1311231" }, { "name": "Ionacrian", "steps": "3112311" }, { "name": "Gathian", "steps": "1123113" }, { "name": "Ionyphian", "steps": "1231131" }, { "name": "Phrynian", "steps": "2311311" }, { "name": "Ionycrian", "steps": "3112212" }, { "name": "Phradian", "steps": "1122123" }, { "name": "Aeolorian", "steps": "1221231" }, { "name": "Gonian", "steps": "2212311" }, { "name": "Dalian", "steps": "2123112" }, { "name": "Dygian", "steps": "1231122" }, { "name": "Zolian", "steps": "2311221" }, { "name": "Aerathian", "steps": "3112122" }, { "name": "Sarian", "steps": "1121223" }, { "name": "Zoptian", "steps": "1212231" }, { "name": "Aeracrian", "steps": "2122311" }, { "name": "Byptian", "steps": "1223112" }, { "name": "Darian", "steps": "2231121" }, { "name": "Lonian", "steps": "2311212" }, { "name": "Aeopian", "steps": "4212111" }, { "name": "Rygian", "steps": "2121114" }, { "name": "Epynian", "steps": "1211142" }, { "name": "Ionogian", "steps": "2111421" }, { "name": "Kydian", "steps": "1114212" }, { "name": "Gaptian", "steps": "1142121" }, { "name": "Tharian", "steps": "1421211" }, { "name": "Epycrian", "steps": "4211121" }, { "name": "Gocrian", "steps": "2111214" }, { "name": "Katolian", "steps": "1112142" }, { "name": "Thoptian", "steps": "1121421" }, { "name": "Bagian", "steps": "1214211" }, { "name": "Kyrian", "steps": "2142111" }, { "name": "Sonian", "steps": "1421112" }, { "name": "Parian", "steps": "4131111" }, { "name": "Ionaptian", "steps": "1311114" }, { "name": "Thylian", "steps": "3111141" }, { "name": "Lolian", "steps": "1111413" }, { "name": "Thagian", "steps": "1114131" }, { "name": "Kolian", "steps": "1141311" }, { "name": "Dycrian", "steps": "1413111" }, { "name": "Stygian", "steps": "4121211" }, { "name": "Aeolygian", "steps": "1212114" }, { "name": "Aerogian", "steps": "2121141" }, { "name": "Dacrian", "steps": "1211412" }, { "name": "Baptian", "steps": "2114121" }, { "name": "Dagian", "steps": "1141212" }, { "name": "Aeolydian", "steps": "1412121" }, { "name": "Stythian", "steps": "4121121" }, { "name": "Kothian", "steps": "1211214" }, { "name": "Pygian", "steps": "2112141" }, { "name": "Rodian", "steps": "1121412" }, { "name": "Sorian", "steps": "1214121" }, { "name": "Monian", "steps": "2141211" }, { "name": "Thalian", "steps": "1412112" }, { "name": "Zorian", "steps": "4121112" }, { "name": "Aeragian", "steps": "1211124" }, { "name": "Epothian", "steps": "2111241" }, { "name": "Salian", "steps": "1112412" }, { "name": "Lyptian", "steps": "1124121" }, { "name": "Katonian", "steps": "1241211" }, { "name": "Gyphian", "steps": "2412111" }, { "name": "Thacrian", "steps": "4112211" }, { "name": "Dodian", "steps": "1122114" }, { "name": "Aeolyptian", "steps": "1221141" }, { "name": "Aeolonian", "steps": "2211411" }, { "name": "Aeradian", "steps": "2114112" }, { "name": "Aeolagian", "steps": "1141122" }, { "name": "Zyrian", "steps": "1411221" }, { "name": "Aeolathian", "steps": "4112121" }, { "name": "Bythian", "steps": "1121214" }, { "name": "Padian", "steps": "1212141" }, { "name": "Rolian", "steps": "2121411" }, { "name": "Pydian", "steps": "1214112" }, { "name": "Thygian", "steps": "2141121" }, { "name": "Katalian", "steps": "1411212" }, { "name": "Saptian", "steps": "4111212" }, { "name": "Aerodian", "steps": "1112124" }, { "name": "Macrian", "steps": "1121241" }, { "name": "Rogian", "steps": "1212411" }, { "name": "Boptian", "steps": "2124111" }, { "name": "Stogian", "steps": "1241112" }, { "name": "Thynian", "steps": "2411121" }, { "name": "Thycrian", "steps": "4111131" }, { "name": "Aeoladian", "steps": "1111314" }, { "name": "Dylian", "steps": "1113141" }, { "name": "Eponian", "steps": "1131411" }, { "name": "Katygian", "steps": "1314111" }, { "name": "Starian", "steps": "3141111" }, { "name": "Phrathian", "steps": "1411113" }, { "name": "Stalian", "steps": "3311211" }, { "name": "Stoptian", "steps": "3112113" }, { "name": "Zygian", "steps": "1121133" }, { "name": "Kataptian", "steps": "1211331" }, { "name": "Aeolaptian", "steps": "2113311" }, { "name": "Pothian", "steps": "1133112" }, { "name": "Bygian", "steps": "1331121" }, { "name": "Morian", "steps": "3231111" }, { "name": "Rycrian", "steps": "2311113" }, { "name": "Ronian", "steps": "3111132" }, { "name": "Stycrian", "steps": "1111323" }, { "name": "Katorian", "steps": "1113231" }, { "name": "Epythian", "steps": "1132311" }, { "name": "Kaptian", "steps": "1323111" }, { "name": "Phraptian", "steps": "3222111" }, { "name": "Bacrian", "steps": "2221113" }, { "name": "Katythian", "steps": "2211132" }, { "name": "Madian", "steps": "2111322" }, { "name": "Aerygian", "steps": "1113222" }, { "name": "Pylian", "steps": "1132221" }, { "name": "Ionathian", "steps": "1322211" }, { "name": "Katocrian", "steps": "3213111" }, { "name": "Phryptian", "steps": "2131113" }, { "name": "Katynian", "steps": "1311132" }, { "name": "Aerycrian", "steps": "3111321" }, { "name": "Ganian", "steps": "1113213" }, { "name": "Eparian", "steps": "1132131" }, { "name": "Lyrian", "steps": "1321311" }, { "name": "Ionopian", "steps": "3212112" }, { "name": "Aeologian", "steps": "2121123" }, { "name": "Zadian", "steps": "1211232" }, { "name": "Sygian", "steps": "2112321" }, { "name": "Phralian", "steps": "1123212" }, { "name": "Phrogian", "steps": "1232121" }, { "name": "Rathian", "steps": "2321211" }, { "name": "Rythian", "steps": "3211212" }, { "name": "Donian", "steps": "2112123" }, { "name": "Aeoloptian", "steps": "1121232" }, { "name": "Panian", "steps": "1212321" }, { "name": "Lodian", "steps": "2123211" }, { "name": "Solian", "steps": "1232112" }, { "name": "Ionolian", "steps": "2321121" }, { "name": "Laptian", "steps": "3211131" }, { "name": "Lygian", "steps": "2111313" }, { "name": "Logian", "steps": "1113132" }, { "name": "Lalian", "steps": "1131321" }, { "name": "Sothian", "steps": "1313211" }, { "name": "Phrocrian", "steps": "3132111" }, { "name": "Thogian", "steps": "1321113" }, { "name": "Katathian", "steps": "3131211" }, { "name": "Modian", "steps": "1312113" }, { "name": "Barian", "steps": "3121131" }, { "name": "Mixolocrian", "steps": "1211313" }, { "name": "Sagian", "steps": "2113131" }, { "name": "Aeolothian", "steps": "1131312" }, { "name": "Socrian", "steps": "1313121" }, { "name": "Tholian", "steps": "3131121" }, { "name": "Ralian", "steps": "1311213" }, { "name": "Syrian", "steps": "3112131" }, { "name": "Stodian", "steps": "1121313" }, { "name": "Ionocrian", "steps": "1213131" }, { "name": "Zycrian", "steps": "2131311" }, { "name": "Ionygian", "steps": "1313112" }, { "name": "Zarian", "steps": "3131112" }, { "name": "Phrythian", "steps": "1311123" }, { "name": "Rorian", "steps": "3111231" }, { "name": "Bolian", "steps": "1112313" }, { "name": "Bothian", "steps": "1123131" }, { "name": "Katadian", "steps": "1231311" }, { "name": "Kodian", "steps": "2313111" }, { "name": "Ranian", "steps": "3123111" }, { "name": "Ladian", "steps": "1231113" }, { "name": "Podian", "steps": "2311131" }, { "name": "Ionothian", "steps": "3111312" }, { "name": "Kanian", "steps": "1113123" }, { "name": "Zylian", "steps": "1131231" }, { "name": "Zodian", "steps": "1312311" }, { "name": "Golian", "steps": "3122211" }, { "name": "Dyptian", "steps": "1222113" }, { "name": "Ryphian", "steps": "2221131" }, { "name": "Gylian", "steps": "2211312" }, { "name": "Aeolycrian", "steps": "2113122" }, { "name": "Pynian", "steps": "1131222" }, { "name": "Zanian", "steps": "1312221" }, { "name": "Palian", "steps": "3122121" }, { "name": "Stothian", "steps": "1221213" }, { "name": "Aerorian", "steps": "2212131" }, { "name": "Katagian", "steps": "2121312" }, { "name": "Phronian", "steps": "1213122" }, { "name": "Banian", "steps": "2131221" }, { "name": "Aeronian", "steps": "1312212" }, { "name": "Loptian", "steps": "3121311" }, { "name": "Ionodian", "steps": "1213113" }, { "name": "Bogian", "steps": "2131131" }, { "name": "Mogian", "steps": "1311312" }, { "name": "Docrian", "steps": "3113121" }, { "name": "Epadian", "steps": "1131213" }, { "name": "Aerynian", "steps": "1312131" }, { "name": "Bycrian", "steps": "3121221" }, { "name": "Pathian", "steps": "1212213" }, { "name": "Mydian", "steps": "2122131" }, { "name": "Thyptian", "steps": "1221312" }, { "name": "Phrothian", "steps": "2213121" }, { "name": "Katycrian", "steps": "2131212" }, { "name": "Ionalian", "steps": "1312122" }, { "name": "Dolian", "steps": "3112221" }, { "name": "Porian", "steps": "1122213" }, { "name": "Aerylian", "steps": "1222131" }, { "name": "Zagian", "steps": "2221311" }, { "name": "Lagian", "steps": "2213112" }, { "name": "Tyrian", "steps": "2131122" }, { "name": "Mixonorian", "steps": "1311222" }, { "name": "Pagian", "steps": "3111222" }, { "name": "Aeolythian", "steps": "1112223" }, { "name": "Molian", "steps": "1122231" }, { "name": "Staptian", "steps": "1222311" }, { "name": "Mothian", "steps": "2223111" }, { "name": "Aeranian", "steps": "2231112" }, { "name": "Ragian", "steps": "2311122" }, { "name": "Larian", "steps": "2222121" }, { "name": "Lythian", "steps": "2221212" }, { "name": "Stydian", "steps": "2212122" }, { "name": "Lorian", "steps": "2121222" }, { "name": "Ionadian", "steps": "1212222" }, { "name": "Bocrian", "steps": "2122221" }, { "name": "Mixolythian", "steps": "1222212" }, { "name": "Thadian", "steps": "4311111" }, { "name": "Sanian", "steps": "3111114" }, { "name": "Ionydian", "steps": "1111143" }, { "name": "Epydian", "steps": "1111431" }, { "name": "Katydian", "steps": "1114311" }, { "name": "Mathian", "steps": "1143111" }, { "name": "Aeryptian", "steps": "1431111" }, { "name": "Pythian", "steps": "4221111" }, { "name": "Katylian", "steps": "2211114" }, { "name": "Bydian", "steps": "2111142" }, { "name": "Bynian", "steps": "1111422" }, { "name": "Galian", "steps": "1114221" }, { "name": "Zonian", "steps": "1142211" }, { "name": "Myrian", "steps": "1422111" }, { "name": "Katogian", "steps": "4211211" }, { "name": "Stacrian", "steps": "2112114" }, { "name": "Styrian", "steps": "1121142" }, { "name": "Ionyrian", "steps": "1211421" }, { "name": "Phrodian", "steps": "2114211" }, { "name": "Pycrian", "steps": "1142112" }, { "name": "Gyptian", "steps": "1421121" }, { "name": "Katacrian", "steps": "4112112" }, { "name": "Sodian", "steps": "1121124" }, { "name": "Bathian", "steps": "1211241" }, { "name": "Mylian", "steps": "2112411" }, { "name": "Godian", "steps": "1124112" }, { "name": "Thorian", "steps": "1241121" }, { "name": "Zocrian", "steps": "2411211" }, { "name": "Stanian", "steps": "4111122" }, { "name": "Epanian", "steps": "1111224" }, { "name": "Konian", "steps": "1112241" }, { "name": "Stocrian", "steps": "1122411" }, { "name": "Kalian", "steps": "1224111" }, { "name": "Phroptian", "steps": "2241111" }, { "name": "Dydian", "steps": "2411112" }, { "name": "Katyptian", "steps": "4111113" }, { "name": "Epodian", "steps": "1111134" }, { "name": "Mygian", "steps": "1111341" }, { "name": "Pacrian", "steps": "1113411" }, { "name": "Aerocrian", "steps": "1134111" }, { "name": "Aeolarian", "steps": "1341111" }, { "name": "Kythian", "steps": "3411111" }, { "name": "Bonian", "steps": "3321111" }, { "name": "Badian", "steps": "3211113" }, { "name": "Katodian", "steps": "2111133" }, { "name": "Sadian", "steps": "1111332" }, { "name": "Dothian", "steps": "1113321" }, { "name": "Moptian", "steps": "1133211" }, { "name": "Aeryrian", "steps": "1332111" }, { "name": "Epagian", "steps": "3312111" }, { "name": "Raptian", "steps": "3121113" }, { "name": "Epolian", "steps": "1211133" }, { "name": "Sythian", "steps": "2111331" }, { "name": "Sydian", "steps": "1113312" }, { "name": "Epocrian", "steps": "1133121" }, { "name": "Kylian", "steps": "1331211" }, { "name": "Gacrian", "steps": "3311121" }, { "name": "Borian", "steps": "3111213" }, { "name": "Sycrian", "steps": "1112133" }, { "name": "Gadian", "steps": "1121331" }, { "name": "Aeolocrian", "steps": "1213311" }, { "name": "Mixodorian", "steps": "2133111" }, { "name": "Dathian", "steps": "1331112" }, { "name": "Katoptian", "steps": "3311112" }, { "name": "Ponian", "steps": "3111123" }, { "name": "Kadian", "steps": "1111233" }, { "name": "Gynian", "steps": "1112331" }, { "name": "Thyphian", "steps": "1123311" }, { "name": "Polian", "steps": "1233111" }, { "name": "Thanian", "steps": "2331111" }, { "name": "Epacrian", "steps": "3221121" }, { "name": "Sathian", "steps": "2211213" }, { "name": "Lathian", "steps": "2112132" }, { "name": "Aeralian", "steps": "1121322" }, { "name": "Kynian", "steps": "1213221" }, { "name": "Stynian", "steps": "2132211" }, { "name": "Epyphian", "steps": "1322112" }, { "name": "Pogian", "steps": "3212121" }, { "name": "Aeraptian", "steps": "2121213" }, { "name": "Epylian", "steps": "1212132" }, { "name": "Gamian", "steps": "2121321" }, { "name": "Kathian", "steps": "1213212" }, { "name": "Lylian", "steps": "2132121" }, { "name": "Epalian", "steps": "1321212" }, { "name": "Eporian", "steps": "3211221" }, { "name": "Rylian", "steps": "2112213" }, { "name": "Epaptian", "steps": "1122132" }, { "name": "Byrian", "steps": "1221321" }, { "name": "Katanian", "steps": "2213211" }, { "name": "Katyrian", "steps": "2132112" }, { "name": "Rynian", "steps": "1321122" }, { "name": "Korian", "steps": "3122112" }, { "name": "Lynian", "steps": "1221123" }, { "name": "Malian", "steps": "2211231" }, { "name": "Synian", "steps": "2112312" }, { "name": "Phragian", "steps": "1123122" }, { "name": "Manian", "steps": "1231221" }, { "name": "Marian", "steps": "2312211" }, { "name": "Mycrian", "steps": "3121212" }, { "name": "Ionorian", "steps": "1212123" }, { "name": "Phrydian", "steps": "2121231" }, { "name": "Zyptian", "steps": "1212312" }, { "name": "Katothian", "steps": "2123121" }, { "name": "Phrylimic", "steps": "1231212" }, { "name": "Kocrian", "steps": "2312121" }, { "name": "Ionanian", "steps": "3121122" }, { "name": "Aerothian", "steps": "1211223" }, { "name": "Stagian", "steps": "2112231" }, { "name": "Lothian", "steps": "1122312" }, { "name": "Phrycrian", "steps": "1223121" }, { "name": "Kyptian", "steps": "2231211" }, { "name": "Ionylian", "steps": "2312112" }, { "name": "Gydian", "steps": "4211112" }, { "name": "Kogian", "steps": "2111124" }, { "name": "Rarian", "steps": "1111242" }, { "name": "Aerolian", "steps": "1112421" }, { "name": "Karian", "steps": "1124211" }, { "name": "Myptian", "steps": "1242111" }, { "name": "Rydian", "steps": "2421111" }, { "name": "Aeolynian", "steps": "2222211" }, { "name": "Aeroptian", "steps": "2222112" }, { "name": "Phryrian", "steps": "2221122" }, { "name": "Gothian", "steps": "2211222" }, { "name": "Storian", "steps": "2112222" }, { "name": "Pyptian", "steps": "1122222" }, { "name": "Thydian", "steps": "1222221" }, { "name": "Aerycryllian", "steps": "2111211111" }, { "name": "Gadyllian", "steps": "1112111112" }, { "name": "Solyllian", "steps": "1121111121" }, { "name": "Zyphyllian", "steps": "1211111211" }, { "name": "Garyllian", "steps": "2111112111" }, { "name": "Soryllian", "steps": "1111121112" }, { "name": "Godyllian", "steps": "1111211121" }, { "name": "Epityllian", "steps": "1112111211" }, { "name": "Ionyllian", "steps": "1121112111" }, { "name": "Aeoryllian", "steps": "1211121111" }, { "name": "Katoryllian", "steps": "3111111111" }, { "name": "Dodyllian", "steps": "1111111113" }, { "name": "Zogyllian", "steps": "1111111131" }, { "name": "Madyllian", "steps": "1111111311" }, { "name": "Dycryllian", "steps": "1111113111" }, { "name": "Aeogyllian", "steps": "1111131111" }, { "name": "Dydyllian", "steps": "1111311111" }, { "name": "Thogyllian", "steps": "1113111111" }, { "name": "Rygyllian", "steps": "1131111111" }, { "name": "Bathyllian", "steps": "1311111111" }, { "name": "Sydyllian", "steps": "2211111111" }, { "name": "Katogyllian", "steps": "2111111112" }, { "name": "Mixodyllian", "steps": "1111111122" }, { "name": "Aeradyllian", "steps": "1111111221" }, { "name": "Ryptyllian", "steps": "1111112211" }, { "name": "Loptyllian", "steps": "1111122111" }, { "name": "Kataphyllian", "steps": "1111221111" }, { "name": "Phradyllian", "steps": "1112211111" }, { "name": "Dagyllian", "steps": "1122111111" }, { "name": "Katyllian", "steps": "1221111111" }, { "name": "Gothyllian", "steps": "2121111111" }, { "name": "Lythyllian", "steps": "1211111112" }, { "name": "Bacryllian", "steps": "2111111121" }, { "name": "Aerygyllian", "steps": "1111111212" }, { "name": "Dathyllian", "steps": "1111112121" }, { "name": "Boptyllian", "steps": "1111121211" }, { "name": "Bagyllian", "steps": "1111212111" }, { "name": "Mathyllian", "steps": "1112121111" }, { "name": "Styptyllian", "steps": "1121211111" }, { "name": "Zolyllian", "steps": "1212111111" }, { "name": "Staptyllian", "steps": "2112111111" }, { "name": "Danyllian", "steps": "1121111112" }, { "name": "Goptyllian", "steps": "1211111121" }, { "name": "Epocryllian", "steps": "2111111211" }, { "name": "Rocryllian", "steps": "1111112112" }, { "name": "Zyryllian", "steps": "1111121121" }, { "name": "Sagyllian", "steps": "1111211211" }, { "name": "Epinyllian", "steps": "1112112111" }, { "name": "Katagyllian", "steps": "1121121111" }, { "name": "Ragyllian", "steps": "1211211111" }, { "name": "Thydyllian", "steps": "2111121111" }, { "name": "Epiryllian", "steps": "1111211112" }, { "name": "Lyryllian", "steps": "1112111121" }, { "name": "Mogyllian", "steps": "1121111211" }, { "name": "Katodyllian", "steps": "1211112111" }, { "name": "Aerycratic", "steps": "21111111111" }, { "name": "Monatic", "steps": "11111111112" }, { "name": "Solatic", "steps": "11111111121" }, { "name": "Zylatic", "steps": "11111111211" }, { "name": "Mixolatic", "steps": "11111112111" }, { "name": "Soratic", "steps": "11111121111" }, { "name": "Godatic", "steps": "11111211111" }, { "name": "Eptatic", "steps": "11112111111" }, { "name": "Ionatic", "steps": "11121111111" }, { "name": "Aeolatic", "steps": "11211111111" }, { "name": "Thydatic", "steps": "12111111111" }, { "name": "Chromatic", "steps": "111111111111" }, { "name": "Minoric", "steps": "444" }, { "name": "Thaptic", "steps": "4341" }, { "name": "Lothic", "steps": "3414" }, { "name": "Phratic", "steps": "4143" }, { "name": "Aerathic", "steps": "1434" }, { "name": "Epathic", "steps": "4323" }, { "name": "Mynic", "steps": "3234" }, { "name": "Rothic", "steps": "2343" }, { "name": "Eporic", "steps": "3432" }, { "name": "Zyphic", "steps": "4431" }, { "name": "Epogic", "steps": "4314" }, { "name": "Lanic", "steps": "3144" }, { "name": "Pyrric", "steps": "1443" }, { "name": "Aeoloric", "steps": "4413" }, { "name": "Gonic", "steps": "4134" }, { "name": "Dalic", "steps": "1344" }, { "name": "Dygic", "steps": "3441" }, { "name": "Daric", "steps": "4332" }, { "name": "Lonic", "steps": "3324" }, { "name": "Phradic", "steps": "3243" }, { "name": "Bolic", "steps": "2433" }, { "name": "Saric", "steps": "4233" }, { "name": "Zoptic", "steps": "2334" }, { "name": "Aeraphic", "steps": "3342" }, { "name": "Byptic", "steps": "3423" }, { "name": "Aeolic", "steps": "4422" }, { "name": "Koptic", "steps": "4224" }, { "name": "Mixolyric", "steps": "2244" }, { "name": "Lydic", "steps": "2442" }, { "name": "Stathic", "steps": "4242" }, { "name": "Dadic", "steps": "2424" }, { "name": "Phrynic", "steps": "3333" }, { "name": "Epathitonic", "steps": "32322" }, { "name": "Mynitonic", "steps": "23223" }, { "name": "Rocritonic", "steps": "32232" }, { "name": "Pentatonic", "steps": "22323" }, { "name": "Thaptitonic", "steps": "23232" }, { "name": "Magitonic", "steps": "43221" }, { "name": "Daditonic", "steps": "32214" }, { "name": "Aeolyphritonic", "steps": "22143" }, { "name": "Gycritonic", "steps": "21432" }, { "name": "Pyritonic", "steps": "14322" }, { "name": "Gathitonic", "steps": "42321" }, { "name": "Ionitonic", "steps": "23214" }, { "name": "Phrynitonic", "steps": "32142" }, { "name": "Stathitonic", "steps": "21423" }, { "name": "Thalitonic", "steps": "14232" }, { "name": "Zolitonic", "steps": "42141" }, { "name": "Epogitonic", "steps": "21414" }, { "name": "Lanitonic", "steps": "14142" }, { "name": "Paptitonic", "steps": "41421" }, { "name": "Ionacritonic", "steps": "14214" }, { "name": "Phraditonic", "steps": "41412" }, { "name": "Aeoloritonic", "steps": "14124" }, { "name": "Gonitonic", "steps": "41241" }, { "name": "Dalitonic", "steps": "12414" }, { "name": "Dygitonic", "steps": "24141" }, { "name": "Aeracritonic", "steps": "41232" }, { "name": "Byptitonic", "steps": "12324" }, { "name": "Daritonic", "steps": "23241" }, { "name": "Lonitonic", "steps": "32412" }, { "name": "Ionycritonic", "steps": "24123" }, { "name": "Lothitonic", "steps": "41223" }, { "name": "Phratonic", "steps": "12234" }, { "name": "Aerathitonic", "steps": "22341" }, { "name": "Saritonic", "steps": "23412" }, { "name": "Zoptitonic", "steps": "34122" }, { "name": "Dolitonic", "steps": "44121" }, { "name": "Poritonic", "steps": "41214" }, { "name": "Aerylitonic", "steps": "12144" }, { "name": "Zagitonic", "steps": "21441" }, { "name": "Lagitonic", "steps": "14412" }, { "name": "Molitonic", "steps": "43311" }, { "name": "Staptitonic", "steps": "33114" }, { "name": "Mothitonic", "steps": "31143" }, { "name": "Aeritonic", "steps": "11433" }, { "name": "Ragitonic", "steps": "14331" }, { "name": "Ionaditonic", "steps": "43212" }, { "name": "Bocritonic", "steps": "32124" }, { "name": "Gythitonic", "steps": "21243" }, { "name": "Pagitonic", "steps": "12432" }, { "name": "Aeolythitonic", "steps": "24321" }, { "name": "Zacritonic", "steps": "43131" }, { "name": "Laritonic", "steps": "31314" }, { "name": "Thacritonic", "steps": "13143" }, { "name": "Styditonic", "steps": "31431" }, { "name": "Loritonic", "steps": "14313" }, { "name": "Aeolyritonic", "steps": "43113" }, { "name": "Goritonic", "steps": "31134" }, { "name": "Aeoloditonic", "steps": "11343" }, { "name": "Doptitonic", "steps": "13431" }, { "name": "Aeraphitonic", "steps": "34311" }, { "name": "Zathitonic", "steps": "42411" }, { "name": "Raditonic", "steps": "24114" }, { "name": "Stonitonic", "steps": "41142" }, { "name": "Syptitonic", "steps": "11424" }, { "name": "Ionythitonic", "steps": "14241" }, { "name": "Aeolanitonic", "steps": "42231" }, { "name": "Danitonic", "steps": "22314" }, { "name": "Ionaritonic", "steps": "23142" }, { "name": "Dynitonic", "steps": "31422" }, { "name": "Zyditonic", "steps": "14223" }, { "name": "Aeolacritonic", "steps": "42123" }, { "name": "Zythitonic", "steps": "21234" }, { "name": "Dyritonic", "steps": "12342" }, { "name": "Koptitonic", "steps": "23421" }, { "name": "Thocritonic", "steps": "34212" }, { "name": "Lycritonic", "steps": "41331" }, { "name": "Daptitonic", "steps": "13314" }, { "name": "Kygitonic", "steps": "33141" }, { "name": "Mocritonic", "steps": "31413" }, { "name": "Zynitonic", "steps": "14133" }, { "name": "Epygitonic", "steps": "41322" }, { "name": "Zaptitonic", "steps": "13224" }, { "name": "Kagitonic", "steps": "32241" }, { "name": "Zogitonic", "steps": "22413" }, { "name": "Epyritonic", "steps": "24132" }, { "name": "Zothitonic", "steps": "41313" }, { "name": "Phrolitonic", "steps": "13134" }, { "name": "Ionagitonic", "steps": "31341" }, { "name": "Aeolapritonic", "steps": "13413" }, { "name": "Kyritonic", "steps": "34131" }, { "name": "Ionyptitonic", "steps": "41133" }, { "name": "Gyritonic", "steps": "11334" }, { "name": "Zalitonic", "steps": "13341" }, { "name": "Stolitonic", "steps": "33411" }, { "name": "Bylitonic", "steps": "34113" }, { "name": "Thoditonic", "steps": "33231" }, { "name": "Dogitonic", "steps": "32313" }, { "name": "Phralitonic", "steps": "23133" }, { "name": "Garitonic", "steps": "31332" }, { "name": "Soptitonic", "steps": "13323" }, { "name": "Kataritonic", "steps": "33222" }, { "name": "Sylitonic", "steps": "32223" }, { "name": "Thonitonic", "steps": "22233" }, { "name": "Phropitonic", "steps": "22332" }, { "name": "Staditonic", "steps": "23322" }, { "name": "Lyditonic", "steps": "33132" }, { "name": "Mythitonic", "steps": "31323" }, { "name": "Sogitonic", "steps": "13233" }, { "name": "Gothitonic", "steps": "32331" }, { "name": "Rothitonic", "steps": "23313" }, { "name": "Zylitonic", "steps": "44211" }, { "name": "Zoditonic", "steps": "42114" }, { "name": "Zaritonic", "steps": "21144" }, { "name": "Phrythitonic", "steps": "11442" }, { "name": "Rolitonic", "steps": "14421" }, { "name": "Ranitonic", "steps": "44112" }, { "name": "Laditonic", "steps": "41124" }, { "name": "Poditonic", "steps": "11244" }, { "name": "Ionothitonic", "steps": "12441" }, { "name": "Kanitonic", "steps": "24411" }, { "name": "Ryphitonic", "steps": "43122" }, { "name": "Gylitonic", "steps": "31224" }, { "name": "Aeolycritonic", "steps": "12243" }, { "name": "Pynitonic", "steps": "22431" }, { "name": "Zanitonic", "steps": "24312" }, { "name": "Phronitonic", "steps": "42312" }, { "name": "Banitonic", "steps": "23124" }, { "name": "Aeronitonic", "steps": "31242" }, { "name": "Golitonic", "steps": "12423" }, { "name": "Dyptitonic", "steps": "24231" }, { "name": "Aerynitonic", "steps": "42213" }, { "name": "Palitonic", "steps": "22134" }, { "name": "Stothitonic", "steps": "21342" }, { "name": "Aerophitonic", "steps": "13422" }, { "name": "Katagitonic", "steps": "34221" }, { "name": "Ionoditonic", "steps": "42132" }, { "name": "Bogitonic", "steps": "21324" }, { "name": "Mogitonic", "steps": "13242" }, { "name": "Docritonic", "steps": "32421" }, { "name": "Epaditonic", "steps": "24213" }, { "name": "Mixitonic", "steps": "33321" }, { "name": "Phrothitonic", "steps": "33213" }, { "name": "Katycritonic", "steps": "32133" }, { "name": "Ionalitonic", "steps": "21333" }, { "name": "Loptitonic", "steps": "13332" }, { "name": "Thyritonic", "steps": "33312" }, { "name": "Thoptitonic", "steps": "33123" }, { "name": "Bycritonic", "steps": "31233" }, { "name": "Pathitonic", "steps": "12333" }, { "name": "Myditonic", "steps": "23331" }, { "name": "Bolitonic", "steps": "42222" }, { "name": "Bothitonic", "steps": "22224" }, { "name": "Kataditonic", "steps": "22242" }, { "name": "Koditonic", "steps": "22422" }, { "name": "Tholitonic", "steps": "24222" }, { "name": "Epathimic", "steps": "322122" }, { "name": "Mynimic", "steps": "221223" }, { "name": "Rocrimic", "steps": "212232" }, { "name": "Eporimic", "steps": "122322" }, { "name": "Thaptimic", "steps": "223221" }, { "name": "Lothimic", "steps": "232212" }, { "name": "Dyrimic", "steps": "421221" }, { "name": "Koptimic", "steps": "212214" }, { "name": "Thocrimic", "steps": "122142" }, { "name": "Aeolanimic", "steps": "221421" }, { "name": "Danimic", "steps": "214212" }, { "name": "Ionarimic", "steps": "142122" }, { "name": "Daptimic", "steps": "414111" }, { "name": "Kygimic", "steps": "141114" }, { "name": "Mocrimic", "steps": "411141" }, { "name": "Zynimic", "steps": "111414" }, { "name": "Aeolimic", "steps": "114141" }, { "name": "Zythimic", "steps": "141411" }, { "name": "Epygimic", "steps": "412311" }, { "name": "Zaptimic", "steps": "123114" }, { "name": "Kagimic", "steps": "231141" }, { "name": "Zogimic", "steps": "311412" }, { "name": "Epyrimic", "steps": "114123" }, { "name": "Lycrimic", "steps": "141231" }, { "name": "Bylimic", "steps": "412221" }, { "name": "Zothimic", "steps": "122214" }, { "name": "Phrolimic", "steps": "222141" }, { "name": "Ionagimic", "steps": "221412" }, { "name": "Aeolaphimic", "steps": "214122" }, { "name": "Kycrimic", "steps": "141222" }, { "name": "Garimic", "steps": "412212" }, { "name": "Soptimic", "steps": "122124" }, { "name": "Ionyptimic", "steps": "221241" }, { "name": "Gyrimic", "steps": "212412" }, { "name": "Zalimic", "steps": "124122" }, { "name": "Stolimic", "steps": "241221" }, { "name": "Thonimic", "steps": "411411" }, { "name": "Stadimic", "steps": "114114" }, { "name": "Thodimic", "steps": "141141" }, { "name": "Mythimic", "steps": "411321" }, { "name": "Sogimic", "steps": "113214" }, { "name": "Gogimic", "steps": "132141" }, { "name": "Rothimic", "steps": "321411" }, { "name": "Katarimic", "steps": "214113" }, { "name": "Sylimic", "steps": "141132" }, { "name": "Mixolimic", "steps": "323211" }, { "name": "Dadimic", "steps": "232113" }, { "name": "Aeolyphimic", "steps": "321132" }, { "name": "Gycrimic", "steps": "211323" }, { "name": "Pyrimic", "steps": "113232" }, { "name": "Lydimic", "steps": "132321" }, { "name": "Ionacrimic", "steps": "323112" }, { "name": "Gathimic", "steps": "231123" }, { "name": "Ionynimic", "steps": "311232" }, { "name": "Phrynimic", "steps": "112323" }, { "name": "Stathimic", "steps": "123231" }, { "name": "Thatimic", "steps": "232311" }, { "name": "Dalimic", "steps": "322311" }, { "name": "Dygimic", "steps": "223113" }, { "name": "Zolimic", "steps": "231132" }, { "name": "Epogimic", "steps": "311322" }, { "name": "Lanimic", "steps": "113223" }, { "name": "Paptimic", "steps": "132231" }, { "name": "Darmic", "steps": "322212" }, { "name": "Lonimic", "steps": "222123" }, { "name": "Ionycrimic", "steps": "221232" }, { "name": "Phradimic", "steps": "212322" }, { "name": "Aeolorimic", "steps": "123222" }, { "name": "Gonimic", "steps": "232221" }, { "name": "Phracrimic", "steps": "321222" }, { "name": "Aerathimic", "steps": "212223" }, { "name": "Sarimic", "steps": "122232" }, { "name": "Zoptimic", "steps": "222321" }, { "name": "Zeracrimic", "steps": "223212" }, { "name": "Byptimic", "steps": "232122" }, { "name": "Starimic", "steps": "432111" }, { "name": "Phrathimic", "steps": "321114" }, { "name": "Saptimic", "steps": "211143" }, { "name": "Aerodimic", "steps": "111432" }, { "name": "Macrimic", "steps": "114321" }, { "name": "Rogimic", "steps": "143211" }, { "name": "Bygimic", "steps": "431121" }, { "name": "Thycrimic", "steps": "311214" }, { "name": "Aeoladimic", "steps": "112143" }, { "name": "Dylimic", "steps": "121431" }, { "name": "Eponimic", "steps": "214311" }, { "name": "Katygimic", "steps": "143112" }, { "name": "Stalimic", "steps": "423111" }, { "name": "Stoptimic", "steps": "231114" }, { "name": "Zygimic", "steps": "311142" }, { "name": "Kataptimic", "steps": "111423" }, { "name": "Aeolaptimic", "steps": "114231" }, { "name": "Pothimic", "steps": "142311" }, { "name": "Rycrimic", "steps": "422121" }, { "name": "Ronimic", "steps": "221214" }, { "name": "Stycrimic", "steps": "212142" }, { "name": "Katorimic", "steps": "121422" }, { "name": "Epythimic", "steps": "214221" }, { "name": "Kaptimic", "steps": "142212" }, { "name": "Katythimic", "steps": "421311" }, { "name": "Madimic", "steps": "213114" }, { "name": "Aerygimic", "steps": "131142" }, { "name": "Pylimic", "steps": "311421" }, { "name": "Ionathimic", "steps": "114213" }, { "name": "Morimic", "steps": "142131" }, { "name": "Aerycrimic", "steps": "421131" }, { "name": "Ganimic", "steps": "211314" }, { "name": "Eparimic", "steps": "113142" }, { "name": "Lyrimic", "steps": "131421" }, { "name": "Phraptimic", "steps": "314211" }, { "name": "Bacrimic", "steps": "142113" }, { "name": "Phralimic", "steps": "413211" }, { "name": "Phrogimic", "steps": "132114" }, { "name": "Rathimic", "steps": "321141" }, { "name": "Katocrimic", "steps": "211413" }, { "name": "Phryptimic", "steps": "114132" }, { "name": "Katynimic", "steps": "141321" }, { "name": "Solimic", "steps": "413121" }, { "name": "Ionolimic", "steps": "131214" }, { "name": "Ionophimic", "steps": "312141" }, { "name": "Aeologimic", "steps": "121413" }, { "name": "Zadimic", "steps": "214131" }, { "name": "Sygimic", "steps": "141312" }, { "name": "Thogimic", "steps": "413112" }, { "name": "Rythimic", "steps": "131124" }, { "name": "Donimic", "steps": "311241" }, { "name": "Aeoloptimic", "steps": "112413" }, { "name": "Panimic", "steps": "124131" }, { "name": "Lodimic", "steps": "241311" }, { "name": "Laptimic", "steps": "412131" }, { "name": "Lygimic", "steps": "121314" }, { "name": "Logimic", "steps": "213141" }, { "name": "Lalimic", "steps": "131412" }, { "name": "Sothimic", "steps": "314121" }, { "name": "Phrocrimic", "steps": "141213" }, { "name": "Modimic", "steps": "412122" }, { "name": "Barimic", "steps": "121224" }, { "name": "Poptimic", "steps": "212241" }, { "name": "Sagimic", "steps": "122412" }, { "name": "Aelothimic", "steps": "224121" }, { "name": "Socrimic", "steps": "241212" }, { "name": "Syrimic", "steps": "412113" }, { "name": "Stodimic", "steps": "121134" }, { "name": "Ionocrimic", "steps": "211341" }, { "name": "Zycrimic", "steps": "113412" }, { "name": "Ionygimic", "steps": "134121" }, { "name": "Katathimic", "steps": "341211" }, { "name": "Bolimic", "steps": "411312" }, { "name": "Bothimic", "steps": "113124" }, { "name": "Katadimic", "steps": "131241" }, { "name": "Kodimic", "steps": "312411" }, { "name": "Tholimic", "steps": "124113" }, { "name": "Ralimic", "steps": "241131" }, { "name": "Kanimic", "steps": "411231" }, { "name": "Zylimic", "steps": "112314" }, { "name": "Zodimic", "steps": "123141" }, { "name": "Zarimic", "steps": "231411" }, { "name": "Phrythimic", "steps": "314112" }, { "name": "Rorimic", "steps": "141123" }, { "name": "Pynimic", "steps": "411132" }, { "name": "Zanimic", "steps": "111324" }, { "name": "Ranimic", "steps": "113241" }, { "name": "Ladimic", "steps": "132411" }, { "name": "Podimic", "steps": "324111" }, { "name": "Ionothimic", "steps": "241113" }, { "name": "Kytrimic", "steps": "411123" }, { "name": "Golimic", "steps": "111234" }, { "name": "Dyptimic", "steps": "112341" }, { "name": "Ryrimic", "steps": "123411" }, { "name": "Gylimic", "steps": "234111" }, { "name": "Aeolycrimic", "steps": "341112" }, { "name": "Palimic", "steps": "332211" }, { "name": "Stothimic", "steps": "322113" }, { "name": "Aeronimic", "steps": "221133" }, { "name": "Katagimic", "steps": "211332" }, { "name": "Phronimic", "steps": "113322" }, { "name": "Banimic", "steps": "133221" }, { "name": "Ionodimic", "steps": "331311" }, { "name": "Bogimic", "steps": "313113" }, { "name": "Mogimic", "steps": "131133" }, { "name": "Docrimic", "steps": "311331" }, { "name": "Epadimic", "steps": "113313" }, { "name": "Aerynimic", "steps": "133131" }, { "name": "Mydimic", "steps": "331131" }, { "name": "Thyptimic", "steps": "311313" }, { "name": "Phrothimic", "steps": "113133" }, { "name": "Katycrimic", "steps": "131331" }, { "name": "Ionalimic", "steps": "313311" }, { "name": "Loptimic", "steps": "133113" }, { "name": "Zagimic", "steps": "331122" }, { "name": "Lagimic", "steps": "311223" }, { "name": "Thyrimic", "steps": "112233" }, { "name": "Thothimic", "steps": "122331" }, { "name": "Bycrimic", "steps": "223311" }, { "name": "Pathimic", "steps": "233112" }, { "name": "Mothimic", "steps": "322131" }, { "name": "Aeranimic", "steps": "221313" }, { "name": "Ragimic", "steps": "213132" }, { "name": "Dolimic", "steps": "131322" }, { "name": "Porimic", "steps": "313221" }, { "name": "Aerylimic", "steps": "132213" }, { "name": "Bocrimic", "steps": "321312" }, { "name": "Gythimic", "steps": "213123" }, { "name": "Pagimic", "steps": "131232" }, { "name": "Aeolythimic", "steps": "312321" }, { "name": "Molimic", "steps": "123213" }, { "name": "Staptimic", "steps": "232131" }, { "name": "Zacrimic", "steps": "321231" }, { "name": "Larimic", "steps": "212313" }, { "name": "Thacrimic", "steps": "123132" }, { "name": "Stydimic", "steps": "231321" }, { "name": "Lorimic", "steps": "313212" }, { "name": "Ionadimic", "steps": "132123" }, { "name": "Ionythimic", "steps": "313131" }, { "name": "Aerythimic", "steps": "131313" }, { "name": "Dynimic", "steps": "313122" }, { "name": "Zydimic", "steps": "131223" }, { "name": "Zathimic", "steps": "312231" }, { "name": "Radimic", "steps": "122313" }, { "name": "Stonimic", "steps": "223131" }, { "name": "Syptimic", "steps": "231312" }, { "name": "Ponimic", "steps": "441111" }, { "name": "Kadimic", "steps": "411114" }, { "name": "Gynimic", "steps": "111144" }, { "name": "Thydimic", "steps": "111441" }, { "name": "Polimic", "steps": "114411" }, { "name": "Thanimic", "steps": "144111" }, { "name": "Lathimic", "steps": "431211" }, { "name": "Aeralimic", "steps": "312114" }, { "name": "Kynimic", "steps": "121143" }, { "name": "Stynimic", "steps": "211431" }, { "name": "Epytimic", "steps": "114312" }, { "name": "Katoptimic", "steps": "143121" }, { "name": "Galimic", "steps": "431112" }, { "name": "Kathimic", "steps": "311124" }, { "name": "Lylimic", "steps": "111243" }, { "name": "Epalimic", "steps": "112431" }, { "name": "Epacrimic", "steps": "124311" }, { "name": "Sathimic", "steps": "243111" }, { "name": "Katanimic", "steps": "422211" }, { "name": "Katyrimic", "steps": "222114" }, { "name": "Rynimic", "steps": "221142" }, { "name": "Pogimic", "steps": "211422" }, { "name": "Aeraptimic", "steps": "114222" }, { "name": "Epylimic", "steps": "142221" }, { "name": "Manimic", "steps": "421212" }, { "name": "Marimic", "steps": "212124" }, { "name": "Locrimic", "steps": "121242" }, { "name": "Rylimic", "steps": "212421" }, { "name": "Epatimic", "steps": "124212" }, { "name": "Byrimic", "steps": "242121" }, { "name": "Kocrimic", "steps": "421113" }, { "name": "Korimic", "steps": "211134" }, { "name": "Lynimic", "steps": "111342" }, { "name": "Malimic", "steps": "113421" }, { "name": "Synimic", "steps": "134211" }, { "name": "Phragimic", "steps": "342111" }, { "name": "Mycrimic", "steps": "411222" }, { "name": "Ionorimic", "steps": "112224" }, { "name": "Phrydimic", "steps": "122241" }, { "name": "Zyptimic", "steps": "222411" }, { "name": "Katothimic", "steps": "224112" }, { "name": "Phrylimic", "steps": "241122" }, { "name": "Aerothimic", "steps": "411213" }, { "name": "Stagimic", "steps": "112134" }, { "name": "Dorimic", "steps": "121341" }, { "name": "Phrycrimic", "steps": "213411" }, { "name": "Kyptimic", "steps": "134112" }, { "name": "Ionylimic", "steps": "341121" }, { "name": "Epynimic", "steps": "333111" }, { "name": "Ionogimic", "steps": "331113" }, { "name": "Kydimic", "steps": "311133" }, { "name": "Gaptimic", "steps": "111333" }, { "name": "Tharimic", "steps": "113331" }, { "name": "Ionaphimic", "steps": "133311" }, { "name": "Thoptimic", "steps": "332121" }, { "name": "Bagimic", "steps": "321213" }, { "name": "Kyrimic", "steps": "212133" }, { "name": "Sonimic", "steps": "121332" }, { "name": "Aeolonimic", "steps": "213321" }, { "name": "Rygimic", "steps": "133212" }, { "name": "Thagimic", "steps": "332112" }, { "name": "Kolimic", "steps": "321123" }, { "name": "Dycrimic", "steps": "211233" }, { "name": "Epycrimic", "steps": "112332" }, { "name": "Gocrimic", "steps": "123321" }, { "name": "Katolimic", "steps": "233211" }, { "name": "Dagimic", "steps": "331221" }, { "name": "Aeolydimic", "steps": "312213" }, { "name": "Parimic", "steps": "122133" }, { "name": "Ionaptimic", "steps": "221331" }, { "name": "Thylimic", "steps": "213312" }, { "name": "Lolimic", "steps": "133122" }, { "name": "Thalimic", "steps": "331212" }, { "name": "Stygimic", "steps": "312123" }, { "name": "Aeolygimic", "steps": "121233" }, { "name": "Aerogimic", "steps": "212331" }, { "name": "Dacrimic", "steps": "123312" }, { "name": "Baptimic", "steps": "233121" }, { "name": "Stythimic", "steps": "323121" }, { "name": "Kothimic", "steps": "231213" }, { "name": "Pygimic", "steps": "312132" }, { "name": "Rodimic", "steps": "121323" }, { "name": "Sorimic", "steps": "213231" }, { "name": "Monimic", "steps": "132312" }, { "name": "Aeragimic", "steps": "322221" }, { "name": "Epothimic", "steps": "222213" }, { "name": "Salimic", "steps": "222132" }, { "name": "Lyptimic", "steps": "221322" }, { "name": "Katonimic", "steps": "213222" }, { "name": "Gygimic", "steps": "132222" }, { "name": "Aeradimic", "steps": "321321" }, { "name": "Zyrimic", "steps": "213213" }, { "name": "Stylimic", "steps": "132132" }, { "name": "Lythimic", "steps": "312312" }, { "name": "Dodimic", "steps": "123123" }, { "name": "Katalimic", "steps": "231231" }, { "name": "Boptimic", "steps": "312222" }, { "name": "Stogimic", "steps": "122223" }, { "name": "Thynimic", "steps": "222231" }, { "name": "Aeolathimic", "steps": "222312" }, { "name": "Bythimic", "steps": "223122" }, { "name": "Padimic", "steps": "231222" }, { "name": "Dathimic", "steps": "422112" }, { "name": "Epagimic", "steps": "221124" }, { "name": "Raptimic", "steps": "211242" }, { "name": "Epolimic", "steps": "112422" }, { "name": "Sythimic", "steps": "124221" }, { "name": "Sydimic", "steps": "242211" }, { "name": "Gacrimic", "steps": "421122" }, { "name": "Borimic", "steps": "211224" }, { "name": "Sycrimic", "steps": "112242" }, { "name": "Gadimic", "steps": "122421" }, { "name": "Aeolocrimic", "steps": "224211" }, { "name": "Phrygimic", "steps": "242112" }, { "name": "WholeTone", "steps": "222222" }, { "name": "Custom", "steps": "" } ];
+
+        let PREDEFINED_SCALES = BASIC_SCALES; // This is the active scale set
+        let isZeitlerSetCurrent = false;
+
+        const INTERVAL_NAMES_BY_SEMITONE = { 0: "R", 1: "m2", 2: "M2", 3: "m3", 4: "M3", 5: "P4", 6: "TT", 7: "P5", 8: "m6", 9: "M6", 10: "m7", 11: "M7" };
+        const TETRACHORDS = [
+            { name: "Ionian or Major", steps: "221" }, { name: "Dorian or (Lower) Minor", steps: "212" }, { name: "Phrygian or Upper Minor", steps: "122" }, { name: "Whole Tone or (Lower) Lydian", steps: "222" }, { name: "Aerynian or Harmonic", steps: "131" }, { name: "Ionacrian", steps: "113" }, { name: "Katarian or Mixolydian Blues", steps: "311" }, { name: "Dodimic or (Lower) Blues", steps: "321" }, { name: "Katalimic or Upper Blues", steps: "132" }, { name: "Lythimic or (Lower) Hungarian Minor", steps: "213" }, { name: "Zyrimic or (Lower) Hungarian Major", steps: "312" }, { name: "Stylimic", steps: "231" }, { name: "Aeradimic", "steps": "123" }, { name: "Thodimic", "steps": "141" }, { name: "Thonimic", "steps": "114" }, { name: "Stadimic", "steps": "411" }, { name: "Sorian or (Upper) Diminished", steps: "121" }, { "name": "Phrodian", "steps": "112" }, { "name": "Godian", "steps": "211" }, { "name": "Chromatic", "steps": "111" }
+        ];
+        const CHORD_DEFINITIONS = {
+            '0,7': '5', // Power Chord
+            '0,4,7': 'maj', '0,3,7': 'm', '0,3,6': 'dim', '0,4,8': 'aug',
+            '0,2,7': 'sus2', '0,5,7': 'sus4',
+            '0,4,7,11': 'maj7', '0,3,7,10': 'm7', '0,4,7,10': '7',
+            '0,3,6,9': 'dim7', '0,3,6,10': 'm7b5'
+        };
+
+        // Sound Definitions & Sampler
+        let PREDEFINED_SOUNDS = [];
+        let samplerAudioBuffer = null;
+        const C4_FREQ = noteFrequencies['C4'];
+
+        function initializeDefaultSounds() {
+            PREDEFINED_SOUNDS = [
+                { id: "classic_piano", name: "Classic Piano", params: { oscillators: [ { type: 'triangle', freqFactor: 1, gainFactor: 1.0, stopFactor: 1.0 }, { type: 'sine', freqFactor: 2, gainFactor: 0.4, stopFactor: 1.0 }, { type: 'sine', freqFactor: 3, gainFactor: 0.15, stopFactor: 1.0 } ], envelope: { type: 'piano', attackTime: 0.005, attackPeakFactor: 0.8, decayToExpMinTimeFactor: 0.8 } } },
+                { id: "lullaby_pluck", name: "Lullaby Pluck", params: { oscillators: [ { type: 'triangle', freqFactor: 1, gainFactor: 1.0, stopFactor: 1.0 }, { type: 'sine', freqFactor: 0.5, gainFactor: 0.3, stopFactor: 1.0 } ], filter: { type: 'lowpass', Q: 1, envelope: [ { type: 'set', timeOffset: 0, valueCalc: (freq) => Math.min(8000, freq * 4) }, { type: 'exp', timeOffset: 0.05, valueCalc: (freq) => Math.min(1500, freq * 1.5) }, { type: 'lin', timeOffset: 0.3, valueCalc: (freq) => freq } ] }, envelope: { type: 'adsr', attackTime: DEFAULT_ATTACK_TIME, decayTime: DEFAULT_DECAY_TIME, sustainLevel: DEFAULT_SUSTAIN_LEVEL, releaseConstant: DEFAULT_ADSR_RELEASE_CONSTANT } } },
+                { id: "mellow_pad", name: "Mellow Pad", params: { oscillators: [ { type: 'sawtooth', freqFactor: 1, detune: -7, gainFactor: 0.33, stopFactor: 1.0 }, { type: 'sawtooth', freqFactor: 1, detune: 0,  gainFactor: 0.33, stopFactor: 1.0 }, { type: 'sawtooth', freqFactor: 1, detune: 7,  gainFactor: 0.33, stopFactor: 1.0 } ], envelope: { type: 'pad', attackTime: 0.3, attackPeakFactor: 0.7, decayStartOffset: 0.4, sustainTargetLevel: 0.6, sustainTimeConstant: 0.2 } } },
+                { id: "warm_saw", name: "Warm Saw", params: { oscillators: [{ type: 'sawtooth', freqFactor: 1, gainFactor: 1.0, stopFactor: 1.0 }], filter: { type: 'lowpass', Q: 4, baseFreqFactor: 3, fixedBaseFreq: null }, envelope: { type: 'adsr', attackTime: 0.03, decayTime: 0.2, sustainLevel: 0.5, releaseConstant: 0.15 } } },
+                { id: "gentle_sine", name: "Gentle Sine", params: { oscillators: [{ type: 'sine', freqFactor: 1, gainFactor: 1.0, stopFactor: 1.0 }], envelope: { type: 'adsr', attackTime: 0.1, decayTime: 0.4, sustainLevel: 0.7, releaseConstant: 0.2 } } },
+                { id: "filtered_noise_pluck", name: "Noise Pluck", params: { noiseSource: { type: 'white', duration: 0.2, gainFactor: 0.8 }, filter: { type: 'bandpass', Q: 15, fixedBaseFreq: 1000, envelope: [ { type: 'set', timeOffset: 0, valueCalc: () => 4000 }, { type: 'exp', timeOffset: 0.15, valueCalc: () => 500 } ] }, envelope: { type: 'adsr', attackTime: 0.005, decayTime: 0.15, sustainLevel: 0.0, releaseConstant: 0.05 } } },
+                { id: "soft_square", name: "Soft Square", params: { oscillators: [{ type: 'square', freqFactor: 1, gainFactor: 1.0, stopFactor: 1.0 }], filter: { type: 'lowpass', Q: 2, baseFreqFactor: 2.5 }, envelope: { type: 'adsr', attackTime: 0.01, decayTime: 0.25, sustainLevel: 0.4, releaseConstant: 0.1 } } },
+                { id: "harmonic_bell", name: "Harmonic Bell", params: { oscillators: [ { type: 'sine', freqFactor: 1,    gainFactor: 1.0, stopFactor: 0.9 }, { type: 'sine', freqFactor: 2.3,  gainFactor: 0.7, stopFactor: 0.8 }, { type: 'sine', freqFactor: 3.8,  gainFactor: 0.5, stopFactor: 0.7 }, { type: 'sine', freqFactor: 5.1,  gainFactor: 0.3, stopFactor: 0.6 } ], envelope: { type: 'simple_decay', attackTime: 0.005, decayTime: SOUND_DURATION * 0.95 } } },
+                { id: "echoing_filter", name: "Echoing Filter", params: { oscillators: [{ type: 'sawtooth', freqFactor: 1, gainFactor: 0.7, stopFactor: 1.0 }], filter: { type: 'lowpass', Q: 12, envelope: [ { type: 'set', timeOffset: 0, valueCalc: (freq) => freq * 5 }, { type: 'exp', timeOffset: 0.1, valueCalc: (freq) => freq * 0.8 }, { type: 'exp', timeOffset: 0.4, valueCalc: (freq) => freq * 3 }, { type: 'exp', timeOffset: SOUND_DURATION * 0.7, valueCalc: (freq) => freq * 0.5 } ] }, envelope: { type: 'adsr', attackTime: 0.02, decayTime: SOUND_DURATION * 0.8, sustainLevel: 0.1, releaseConstant: 0.1 } } },
+                { id: "default_triangle", name: "Default Triangle", params: { oscillators: [{ type: 'triangle', freqFactor: 1, gainFactor: 1.0, stopFactor: 1.0 }], envelope: { type: 'adsr', attackTime: DEFAULT_ATTACK_TIME, decayTime: DEFAULT_DECAY_TIME, sustainLevel: DEFAULT_SUSTAIN_LEVEL, releaseConstant: DEFAULT_ADSR_RELEASE_CONSTANT } } }
+            ];
+        }
+        initializeDefaultSounds(); 
+
+        // --- Audio Playback & MIDI ---
+        function initAudioContext() { 
+            if (!audioContext) { 
+                try { 
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)(); 
+                    if (!audioContext) { console.error("Web Audio API not supported."); alert("Web Audio API not supported."); return false; }
+                    masterVolumeNode = audioContext.createGain(); 
+                    masterVolumeNode.gain.value = parseFloat(document.getElementById('volumeSlider').value);
+                    masterVolumeNode.connect(audioContext.destination);
+                } catch (e) { console.error("Could not create AudioContext:", e); alert("Could not create AudioContext: " + e.message); return false; }
+            }
+            if (audioContext.state === 'suspended') { audioContext.resume().catch(err => console.error("Error resuming AudioContext:", err));}
+            return true;
+        }
+
+        function sendMidiNoteOn(midiNoteNumber, velocity = 100) { if (isMidiOutEnabled && currentMidiOutput) { if (activeMidiNotes.has(midiNoteNumber)) { clearTimeout(activeMidiNotes.get(midiNoteNumber)); activeMidiNotes.delete(midiNoteNumber); } currentMidiOutput.send([0x90, midiNoteNumber, Math.max(1, Math.min(127, velocity))]); } }
+        function sendMidiNoteOff(midiNoteNumber, velocity = 0) { if (isMidiOutEnabled && currentMidiOutput) { if (activeMidiNotes.has(midiNoteNumber)) { clearTimeout(activeMidiNotes.get(midiNoteNumber)); activeMidiNotes.delete(midiNoteNumber); } currentMidiOutput.send([0x80, midiNoteNumber, velocity]); } }
+        
+        function playNote(baseFrequency, gainScale = 1, midiNoteNum = null, isAutoPlayed = false) { 
+            if (!initAudioContext() || !audioContext || !baseFrequency) return;
+            
+            const selectedSoundId = document.getElementById('soundTypeSelect').value;
+            const now = audioContext.currentTime;
+            const noteGain = audioContext.createGain();
+            noteGain.connect(masterVolumeNode);
+
+            // --- SAMPLER LOGIC ---
+            if (selectedSoundId === 'sampler' && samplerAudioBuffer) {
+                const source = audioContext.createBufferSource();
+                source.buffer = samplerAudioBuffer;
+                
+                const playbackRate = baseFrequency / C4_FREQ;
+                source.playbackRate.value = playbackRate;
+
+                source.connect(noteGain);
+                source.start(now);
+                // The envelope below will be applied to this sampler source
+            } else {
+                // --- SYNTHESIZER LOGIC ---
+                let soundDef = PREDEFINED_SOUNDS.find(s => s.id === selectedSoundId);
+                if (!soundDef) {
+                    console.warn(`Sound ID "${selectedSoundId}" not found. Using default triangle.`);
+                    soundDef = PREDEFINED_SOUNDS.find(s => s.id === "default_triangle") || PREDEFINED_SOUNDS[0];
+                    if (!soundDef) { console.error("Fallback sound definition is missing!"); return; }
+                }
+                const params = soundDef.params;
+                let lastNodeInOutChain = noteGain;
+                
+                if (params.filter) {
+                    const filterNode = audioContext.createBiquadFilter(); filterNode.type = params.filter.type || 'lowpass'; filterNode.Q.value = params.filter.Q || 1;
+                    if (params.filter.gain && (filterNode.type === 'peaking' || filterNode.type === 'lowshelf' || filterNode.type === 'highshelf')) { filterNode.gain.value = params.filter.gain; }
+                    let initialFilterFreq = params.filter.fixedBaseFreq != null ? params.filter.fixedBaseFreq : baseFrequency * (params.filter.baseFreqFactor || 1);
+                    filterNode.frequency.setValueAtTime(initialFilterFreq, now);
+                    if (params.filter.envelope && Array.isArray(params.filter.envelope)) {
+                        params.filter.envelope.forEach(stage => {
+                            const targetTime = now + (stage.timeOffset || 0); const value = typeof stage.valueCalc === 'function' ? stage.valueCalc(baseFrequency) : (stage.value || initialFilterFreq);
+                            if (stage.type === 'set') filterNode.frequency.setValueAtTime(value, targetTime);
+                            else if (stage.type === 'lin') filterNode.frequency.linearRampToValueAtTime(value, targetTime);
+                            else if (stage.type === 'exp') filterNode.frequency.exponentialRampToValueAtTime(Math.max(0.001, value), targetTime);
+                        });
+                    }
+                    filterNode.connect(noteGain); lastNodeInOutChain = filterNode;
+                }
+
+                if (params.oscillators && Array.isArray(params.oscillators)) {
+                    params.oscillators.forEach(oscDef => {
+                        const osc = audioContext.createOscillator(); osc.type = oscDef.type || 'sine'; osc.frequency.setValueAtTime(baseFrequency * (oscDef.freqFactor || 1), now);
+                        if (oscDef.detune) osc.detune.setValueAtTime(oscDef.detune, now);
+                        const stopTime = now + SOUND_DURATION * (oscDef.stopFactor || 1.0);
+                        if (oscDef.gainFactor != null && oscDef.gainFactor !== 1.0) { const oscGainNode = audioContext.createGain(); oscGainNode.gain.setValueAtTime(oscDef.gainFactor, now); osc.connect(oscGainNode).connect(lastNodeInOutChain); } else { osc.connect(lastNodeInOutChain); }
+                        osc.start(now); osc.stop(stopTime);
+                    });
+                }
+
+                if (params.noiseSource) {
+                    const noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * (params.noiseSource.duration || 0.2), audioContext.sampleRate);
+                    const output = noiseBuffer.getChannelData(0); for (let i = 0; i < output.length; i++) { output[i] = (Math.random() * 2 - 1) * (params.noiseSource.type === 'pink' ? Math.random() : 1); }
+                    const noise = audioContext.createBufferSource(); noise.buffer = noiseBuffer;
+                    const noiseGainValue = params.noiseSource.gainFactor != null ? params.noiseSource.gainFactor : 1.0;
+                    if (noiseGainValue !== 1.0) { const noiseGainNode = audioContext.createGain(); noiseGainNode.gain.setValueAtTime(noiseGainValue, now); noise.connect(noiseGainNode).connect(lastNodeInOutChain); } else { noise.connect(lastNodeInOutChain); }
+                    noise.start(now); noise.stop(now + (params.noiseSource.duration || SOUND_DURATION));
+                }
+            }
+
+            // --- Main Envelope (applied to both synth and sampler) ---
+            noteGain.gain.setValueAtTime(0, now);
+            const soundDefForEnv = PREDEFINED_SOUNDS.find(s => s.id === selectedSoundId) || PREDEFINED_SOUNDS.find(s=>s.id === "default_triangle");
+            const env = (soundDefForEnv && soundDefForEnv.params.envelope) || PREDEFINED_SOUNDS.find(s=>s.id === "default_triangle").params.envelope;
+            
+            // For sampler, force a basic ADSR if its own sound def is not found
+            const effectiveEnv = (selectedSoundId === 'sampler' && (!soundDefForEnv || !soundDefForEnv.params.envelope)) 
+                ? { type: 'adsr', attackTime: 0.01, decayTime: 0.4, sustainLevel: 0.1, releaseConstant: 0.2 } 
+                : env;
+
+            if (effectiveEnv.type === 'piano') { noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale * (effectiveEnv.attackPeakFactor || 0.8), now + (effectiveEnv.attackTime || 0.005)); noteGain.gain.exponentialRampToValueAtTime(0.0001, now + SOUND_DURATION * (effectiveEnv.decayToExpMinTimeFactor || 0.8)); }
+            else if (effectiveEnv.type === 'adsr') { noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + (effectiveEnv.attackTime || DEFAULT_ATTACK_TIME)); noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * (effectiveEnv.sustainLevel != null ? effectiveEnv.sustainLevel : DEFAULT_SUSTAIN_LEVEL), now + (effectiveEnv.attackTime || DEFAULT_ATTACK_TIME) + (effectiveEnv.decayTime || DEFAULT_DECAY_TIME), effectiveEnv.releaseConstant || DEFAULT_ADSR_RELEASE_CONSTANT ); }
+            else if (effectiveEnv.type === 'pad') { noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale * (effectiveEnv.attackPeakFactor || 0.7), now + (effectiveEnv.attackTime || 0.3)); noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * (effectiveEnv.sustainTargetLevel != null ? effectiveEnv.sustainTargetLevel : 0.6), now + (effectiveEnv.attackTime || 0.3) + (effectiveEnv.decayStartOffset || 0.4), effectiveEnv.sustainTimeConstant || 0.2 ); }
+            else if (effectiveEnv.type === 'simple_decay') { noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + (effectiveEnv.attackTime || 0.005)); noteGain.gain.exponentialRampToValueAtTime(0.0001, now + (effectiveEnv.decayTime || SOUND_DURATION * 0.95)); }
+            else { console.warn(`Unknown envelope type: ${effectiveEnv.type}. Using default ADSR.`); noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + DEFAULT_ATTACK_TIME); noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * DEFAULT_SUSTAIN_LEVEL, now + DEFAULT_ATTACK_TIME + DEFAULT_DECAY_TIME, DEFAULT_ADSR_RELEASE_CONSTANT ); }
+        
+            if (isMidiOutEnabled && midiNoteNum !== null) {
+                let velocity = isAutoPlayed ? (MIDI_BASE_VELOCITY + Math.floor(Math.random() * MIDI_VELOCITY_VARIATION_RANGE) - Math.floor(MIDI_VELOCITY_VARIATION_RANGE / 2)) : 110;
+                velocity = Math.max(1, Math.min(127, Math.round(velocity * gainScale)));
+                sendMidiNoteOn(midiNoteNum, velocity); 
+                const noteOffTimeout = setTimeout(() => { sendMidiNoteOff(midiNoteNum); activeMidiNotes.delete(midiNoteNum); }, SOUND_DURATION * 1000 * 0.95);
+                activeMidiNotes.set(midiNoteNum, noteOffTimeout);
+            }
+        }
+
+        // --- Chord Detection ---
+        function getChordName(midiNotes) {
+            const chordNameDisplay = document.getElementById('chordNameDisplay');
+            if (midiNotes.size < 2) {
+                return '--';
+            }
+            const pitchClasses = [...new Set([...midiNotes].map(n => n % 12))];
+
+            if (pitchClasses.length < 2) {
+                return '--';
+            }
+            
+            // Try each note as a potential root
+            for (const rootPitchClass of pitchClasses) {
+                const intervals = pitchClasses.map(p => (p - rootPitchClass + 12) % 12).sort((a, b) => a - b);
+                const intervalKey = intervals.join(',');
+                
+                if (CHORD_DEFINITIONS[intervalKey]) {
+                    const rootNoteName = ALL_NOTES_CHROMATIC[rootPitchClass];
+                    const chordQuality = CHORD_DEFINITIONS[intervalKey];
+                    const bassNoteMidi = [...midiNotes].sort((a,b) => a-b)[0];
+                    const bassNotePitchClass = bassNoteMidi % 12;
+                    
+                    if (bassNotePitchClass !== rootPitchClass) {
+                        const bassNoteName = ALL_NOTES_CHROMATIC[bassNotePitchClass];
+                        return `${rootNoteName}${chordQuality}/${bassNoteName}`;
+                    } else {
+                        return `${rootNoteName}${chordQuality}`;
+                    }
+                }
+            }
+            // Check for power chord as a fallback
+             if (pitchClasses.length === 2) {
+                const sorted = pitchClasses.sort((a,b)=>a-b);
+                if (sorted[1] - sorted[0] === 7) return `${ALL_NOTES_CHROMATIC[sorted[0]]}5`;
+                if (sorted[1] - sorted[0] === 5) return `${ALL_NOTES_CHROMATIC[sorted[1]]}5`;
+            }
+
+            return 'Unknown';
+        }
+
+        function updateChordDisplay() {
+            const chordNameDisplay = document.getElementById('chordNameDisplay');
+            if (chordNameDisplay) {
+                chordNameDisplay.textContent = getChordName(userHeldNotes);
+            }
+        }
+
+
+        // --- Piano UI & Layout ---
+        function generateKeysData(startNoteName = 'C3', endNoteName = 'B5') {
+            keysData.length = 0; // Clear the existing array
+
+            const startPitch = startNoteName.slice(0, -1);
+            const startOctave = parseInt(startNoteName.slice(-1));
+            const endPitch = endNoteName.slice(0, -1);
+            const endOctave = parseInt(endNoteName.slice(-1));
+
+            const startIndex = ALL_NOTES_CHROMATIC.indexOf(startPitch);
+            const endIndex = ALL_NOTES_CHROMATIC.indexOf(endPitch);
+
+            let currentId = 1;
+            for (let octave = startOctave; octave <= endOctave; octave++) {
+                let noteStartIdx = (octave === startOctave) ? startIndex : 0;
+                let noteEndIdx = (octave === endOctave) ? endIndex : 11;
+
+                for (let i = noteStartIdx; i <= noteEndIdx; i++) {
+                    const noteBase = ALL_NOTES_CHROMATIC[i];
+                    const noteName = noteBase + octave;
+                    const midiNum = (octave - 4) * 12 + (i - 9) + A4_MIDI_NUMBER;
+                    keysData.push({
+                        note: noteName,
+                        pitchClass: noteBase,
+                        octave: octave,
+                        idSuffix: currentId++,
+                        type: noteBase.includes("#") ? "black" : "white",
+                        frequency: noteFrequencies[noteName],
+                        midi: midiNum
+                    });
+                }
+            }
+        }
+        function createPianoKeys() { const pianoKeyboard = document.getElementById('pianoKeyboard'); pianoKeyboard.innerHTML = ''; keysData.forEach(keyInfo => { const keyElement = document.createElement('div'); keyElement.classList.add('key', keyInfo.type + '-key'); keyElement.id = 'key' + keyInfo.idSuffix; keyElement.dataset.frequency = keyInfo.frequency; keyElement.dataset.pitchClass = keyInfo.pitchClass; keyElement.dataset.octave = keyInfo.octave; keyElement.dataset.originalNoteName = keyInfo.note; keyElement.dataset.midi = keyInfo.midi; const keyLabel = document.createElement('div'); keyLabel.classList.add('key-label'); keyLabel.textContent = keyInfo.note; keyElement.appendChild(keyLabel); pianoKeyboard.appendChild(keyElement); const handlePress = (event) => { if (event.type === 'touchstart') event.preventDefault(); if (keyElement.classList.contains('key-disabled')) return; if (!initAudioContext()) return; const freq = parseFloat(keyElement.dataset.frequency); const midi = parseInt(keyElement.dataset.midi); userHeldNotes.add(midi); updateChordDisplay(); if (audioContext.state === 'suspended') { audioContext.resume().then(() => { playNote(freq, 1, midi, false); }); } else { playNote(freq, 1, midi, false); } keyElement.classList.add('pressed'); }; const handleRelease = () => { const midi = parseInt(keyElement.dataset.midi); userHeldNotes.delete(midi); updateChordDisplay(); keyElement.classList.remove('pressed'); if (isMidiOutEnabled) { sendMidiNoteOff(midi); } }; keyElement.addEventListener('touchstart', handlePress, { passive: false }); keyElement.addEventListener('touchend', handleRelease); keyElement.addEventListener('touchcancel', handleRelease); keyElement.addEventListener('mousedown', handlePress); keyElement.addEventListener('mouseup', handleRelease); keyElement.addEventListener('mouseleave', () => { if (keyElement.classList.contains('pressed')) { handleRelease(); } }); }); updatePianoLayout(parseFloat(document.getElementById('zoomSlider').value)); initialScroll(); }
+        function updatePianoLayout(zoomFactor) { document.documentElement.style.setProperty('--white-key-width', `${BASE_DIMENSIONS.whiteKeyWidth * zoomFactor}px`); document.documentElement.style.setProperty('--white-key-height', `${BASE_DIMENSIONS.whiteKeyHeight * zoomFactor}px`); document.documentElement.style.setProperty('--black-key-width', `${BASE_DIMENSIONS.blackKeyWidth * zoomFactor}px`); document.documentElement.style.setProperty('--black-key-height', `${BASE_DIMENSIONS.blackKeyHeight * zoomFactor}px`); document.documentElement.style.setProperty('--key-border-radius', `${BASE_DIMENSIONS.keyBorderRadius * zoomFactor}px`); const pianoKeyboard = document.getElementById('pianoKeyboard'); const whiteKeyWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--white-key-width')); const blackKeyWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--black-key-width')); let whiteKeyVisualIndex = 0; let totalWhiteKeys = 0; keysData.forEach(keyInfo => { const keyElement = document.getElementById('key' + keyInfo.idSuffix); if (!keyElement) return; if (keyInfo.type === 'white') { totalWhiteKeys++; whiteKeyVisualIndex++; } else { const precedingWhiteKeyVisualIndex = whiteKeyVisualIndex - 1; keyElement.style.left = `calc(${precedingWhiteKeyVisualIndex * whiteKeyWidth}px + ${whiteKeyWidth}px - (${blackKeyWidth / 2}px))`; } }); pianoKeyboard.style.width = (totalWhiteKeys * whiteKeyWidth) + (totalWhiteKeys > 0 ? 5 : 0) + 'px'; }
+        function initialScroll() { const pianoContainer = document.getElementById('pianoContainer'); const whiteKeyWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--white-key-width')); let c4WhiteKeyIndex = -1; let currentWhiteKeyIdx = 0; for(let i=0; i < keysData.length; i++) { if (keysData[i].type === 'white') { if (keysData[i].note === "C4") { c4WhiteKeyIndex = currentWhiteKeyIdx; break; } currentWhiteKeyIdx++; } } if (c4WhiteKeyIndex !== -1) { const scrollPosition = (c4WhiteKeyIndex * whiteKeyWidth) - (pianoContainer.clientWidth / 2) + (whiteKeyWidth / 2); pianoContainer.scrollLeft = Math.max(0, scrollPosition); } else { pianoContainer.scrollLeft = 0; } }
+
+        // --- Scale, Chord, Auto-Play --- (most functions remain the same)
+        function getFullScaleRange(rootPitchClass, semistepPattern) { const allScaleNotes = []; const rootIdx = ALL_NOTES_CHROMATIC.indexOf(rootPitchClass); if (rootIdx === -1) return []; const steps = semistepPattern.split('').map(s => parseInt(s)).filter(n => !isNaN(n) && n > 0); if (steps.length === 0) return []; for (let oct = 2; oct <= 6; oct++) { let currentOctave = oct; let totalSemitonesFromOctaveRoot = 0; const rootNoteNameCandidate = ALL_NOTES_CHROMATIC[rootIdx] + currentOctave; const rootKeyData = keysData.find(k => k.note === rootNoteNameCandidate); if (rootKeyData) { allScaleNotes.push({ ...rootKeyData, semitonesFromScaleRoot: 0 % 12, interval: INTERVAL_NAMES_BY_SEMITONE[0] }); } steps.forEach(step => { totalSemitonesFromOctaveRoot += step; let nextNoteAbsIndexChromatic = rootIdx + totalSemitonesFromOctaveRoot; let nextOctaveCandidate = oct + Math.floor(nextNoteAbsIndexChromatic / 12); let nextPitchClassIndexInChromatic = nextNoteAbsIndexChromatic % 12; const noteNameCandidate = ALL_NOTES_CHROMATIC[nextPitchClassIndexInChromatic] + nextOctaveCandidate; const keyDataInstance = keysData.find(k => k.note === noteNameCandidate); if (keyDataInstance) { allScaleNotes.push({ ...keyDataInstance, semitonesFromScaleRoot: totalSemitonesFromOctaveRoot % 12, interval: INTERVAL_NAMES_BY_SEMITONE[totalSemitonesFromOctaveRoot % 12] || `+${totalSemitonesFromOctaveRoot % 12}` }); } }); } const uniqueNotes = Array.from(new Map(allScaleNotes.map(item => [item.note, item])).values()); return uniqueNotes.sort((a,b) => a.frequency - b.frequency); }
+        function getScaleNotesWithOctaves(rootPitchClass, semistepPattern, startOctave = 4) { const scaleNotes = []; const rootIndex = ALL_NOTES_CHROMATIC.indexOf(rootPitchClass); if (rootIndex === -1) return { notesWithIntervals: [], fullNoteNames: [], notesForPlayback: [] }; let currentOctave = startOctave; const steps = semistepPattern.split('').map(s => parseInt(s)).filter(n => !isNaN(n) && n > 0); let totalSemitonesFromRoot = 0; let firstNoteName = ALL_NOTES_CHROMATIC[rootIndex] + currentOctave; while(!keysData.find(k => k.note === firstNoteName) && currentOctave <= 5) { currentOctave++; firstNoteName = ALL_NOTES_CHROMATIC[rootIndex] + currentOctave; } while(!keysData.find(k => k.note === firstNoteName) && currentOctave >= 3) { currentOctave--; firstNoteName = ALL_NOTES_CHROMATIC[rootIndex] + currentOctave; } const firstNoteKeyData = keysData.find(k => k.note === firstNoteName); if (firstNoteKeyData) scaleNotes.push({ ...firstNoteKeyData, interval: INTERVAL_NAMES_BY_SEMITONE[0], semitonesFromRoot: 0 }); steps.forEach(step => { totalSemitonesFromRoot += step; let nextNoteAbsIndexChromatic = rootIndex + totalSemitonesFromRoot; let nextOctave = currentOctave + Math.floor(nextNoteAbsIndexChromatic / 12); let nextPitchClassIndexInChromatic = nextNoteAbsIndexChromatic % 12; const noteName = ALL_NOTES_CHROMATIC[nextPitchClassIndexInChromatic] + nextOctave; const keyDataInstance = keysData.find(k => k.note === noteName); if (keyDataInstance) scaleNotes.push({ ...keyDataInstance, interval: INTERVAL_NAMES_BY_SEMITONE[totalSemitonesFromRoot % 12] || `+${totalSemitonesFromRoot % 12}`, semitonesFromRoot: totalSemitonesFromRoot }); }); const notesInOneOctave = scaleNotes.slice(0, steps.length + 1).filter(n => n.frequency); return { notesWithIntervals: notesInOneOctave, fullNoteNames: notesInOneOctave.map(n => n.note), notesForPlayback: notesInOneOctave.map(n => ({note: n.note, frequency: n.frequency, pitchClass: n.pitchClass, octave: n.octave, midi: n.midi})) }; }
+        function getDiatonicTriads(rootPitchClass, semistepPattern) { const { notesWithIntervals: scaleInfo } = getScaleNotesWithOctaves(rootPitchClass, semistepPattern, 4); if (scaleInfo.length < 3) return []; const triads = []; const scaleLength = scaleInfo.length -1; for (let i = 0; i < scaleLength; i++) { const n1 = scaleInfo[i]; const n3 = scaleInfo[(i + 2) % scaleLength]; const n5 = scaleInfo[(i + 4) % scaleLength]; let actualChordNotes = [n1.note]; let tempNote = n1; let thirdInfo = keysData.find(kd => kd.pitchClass === n3.pitchClass && kd.octave >= tempNote.octave && kd.frequency > tempNote.frequency); if(!thirdInfo) thirdInfo = keysData.find(kd => kd.pitchClass === n3.pitchClass && kd.octave === tempNote.octave + 1); if(thirdInfo && thirdInfo.frequency) actualChordNotes.push(thirdInfo.note); else continue; tempNote = thirdInfo; let fifthInfo = keysData.find(kd => kd.pitchClass === n5.pitchClass && kd.octave >= tempNote.octave && kd.frequency > tempNote.frequency); if(!fifthInfo) fifthInfo = keysData.find(kd => kd.pitchClass === n5.pitchClass && kd.octave === tempNote.octave + 1); if(fifthInfo && fifthInfo.frequency) actualChordNotes.push(fifthInfo.note); else continue; const semitonesToThird = (ALL_NOTES_CHROMATIC.indexOf(n3.pitchClass) - ALL_NOTES_CHROMATIC.indexOf(n1.pitchClass) + 12) % 12; const semitonesToFifth = (ALL_NOTES_CHROMATIC.indexOf(n5.pitchClass) - ALL_NOTES_CHROMATIC.indexOf(n1.pitchClass) + 12) % 12; let type = ""; let labelSuffix = ""; if (semitonesToThird === 4 && semitonesToFifth === 7) { type = "Major"; labelSuffix = "maj"; } else if (semitonesToThird === 3 && semitonesToFifth === 7) { type = "minor"; labelSuffix = "m"; } else if (semitonesToThird === 3 && semitonesToFifth === 6) { type = "diminished"; labelSuffix = "dim"; } else if (semitonesToThird === 4 && semitonesToFifth === 8) { type = "Augmented"; labelSuffix = "aug"; } else continue; triads.push({ rootNoteName: n1.note, type: type, notes: actualChordNotes, label: `${n1.pitchClass}${labelSuffix}` }); } return triads; }
+        
+        // --- Auto Play --- (no changes needed in these functions for this request)
+        let autoPlayTimeoutId = null; let originalGeneratedMelody = []; let currentMelody = []; let currentMelodyNoteIndex = 0; let currentMelodyRepetitionCount = 0; let currentTranspositionCycleIndex = 0; let isAutoPlaying = false; let lastAutoPlayedChordKeyElements = []; let autoPlaySettings = { originalRootPitchClass: '', originalScalePattern: '', isMonorhythmic: false, currentMelodyLength: 8, currentTempoMs: 750, isPlayingArpeggio: false, isPlayingRepeatingChords: false, currentSongSection: 'A', currentSongSectionIndex: 0, repeatingBassPattern: [], currentRepeatingBassIndex: 0, chordToneMelodyChordProgression: [] , currentChordInProgressionIndex: 0 }; const SONG_STRUCTURE = ['A', 'B', 'A', 'C', 'B']; let fixedOriginalScalePalette = []; let isPlayingScaleRun = false; let currentArpeggioBassNote = null; 
+        function generateRandomMelody(scalePaletteForGeneration, initialMelodyRootPitchClass, isMonorhythmic, melodyLength) { if (!scalePaletteForGeneration || scalePaletteForGeneration.length === 0) return []; const melody = []; let previousNote = null; let firstNoteForMelody = null; const targetOctaves = [4, 3, 5]; for (const oct of targetOctaves) { const rootNoteName = initialMelodyRootPitchClass + oct; firstNoteForMelody = scalePaletteForGeneration.find(n => n.note === rootNoteName); if (firstNoteForMelody) break; } if (!firstNoteForMelody) firstNoteForMelody = scalePaletteForGeneration.find(n => n.pitchClass === initialMelodyRootPitchClass); if (!firstNoteForMelody) firstNoteForMelody = scalePaletteForGeneration.length > 0 ? scalePaletteForGeneration[0] : null; if (!firstNoteForMelody) return []; previousNote = firstNoteForMelody; let currentRhythmPatternSource = RHYTHM_PATTERNS.standard; if (!isMonorhythmic && Math.random() < RHYTHM_STYLE_PROBABILITY) { const styleKeys = Object.keys(RHYTHM_PATTERNS); currentRhythmPatternSource = RHYTHM_PATTERNS[styleKeys[Math.floor(Math.random() * styleKeys.length)]]; } melody.push({ ...previousNote, durationFactor: isMonorhythmic ? 1 : currentRhythmPatternSource[Math.floor(Math.random() * currentRhythmPatternSource.length)] }); for (let i = 1; i < melodyLength; i++) { let candidates = []; if (i === 1) { const rootOfMelody = melody[0]; const targetIntervalsSemitones = [3, 4, 7, -3, -4, -7]; const preferredCandidates = []; targetIntervalsSemitones.forEach(interval => { const targetMidi = rootOfMelody.midi + interval; const targetNote = scalePaletteForGeneration.find(n => n.midi === targetMidi); if (targetNote) preferredCandidates.push(targetNote); }); if (preferredCandidates.length > 0) candidates = preferredCandidates; } if (candidates.length === 0) { const upwardCandidates = []; const downwardCandidates = []; scalePaletteForGeneration.forEach(candidateNote => { if (candidateNote.note === previousNote.note) return; const semitoneDiff = candidateNote.midi - previousNote.midi; if (Math.abs(semitoneDiff) >= MIN_MELODIC_INTERVAL) { if (semitoneDiff > 0) upwardCandidates.push(candidateNote); else downwardCandidates.push(candidateNote); } }); const preferUp = Math.random() < 0.5; if (preferUp && upwardCandidates.length > 0) candidates = upwardCandidates; else if (downwardCandidates.length > 0) candidates = downwardCandidates; else if (upwardCandidates.length > 0) candidates = upwardCandidates; else candidates = scalePaletteForGeneration.filter(n => n.note !== previousNote.note); } let nextNoteInfo; if (candidates.length > 0) { nextNoteInfo = candidates[Math.floor(Math.random() * candidates.length)]; } else if (melody.length > 0) { nextNoteInfo = melody[0]; } else { break; } previousNote = nextNoteInfo; melody.push({ ...nextNoteInfo, durationFactor: isMonorhythmic ? 1 : currentRhythmPatternSource[Math.floor(Math.random() * currentRhythmPatternSource.length)] }); if (i < melodyLength -1 && Math.random() < NOTE_REPETITION_PROBABILITY) { const numRepetitions = Math.floor(Math.random() * MAX_NOTE_REPETITIONS) + 1; for (let r = 0; r < numRepetitions && i < melodyLength -1; r++) { melody.push({ ...previousNote, durationFactor: isMonorhythmic ? 1 : currentRhythmPatternSource[Math.floor(Math.random() * currentRhythmPatternSource.length)] }); i++; } } } return melody; }
+        function generateArpeggioMelody(scalePaletteForGeneration, initialMelodyRootPitchClass, melodyLength) { if (!scalePaletteForGeneration || scalePaletteForGeneration.length === 0) return []; const arpeggio = []; let firstNoteForArpeggio = null; const targetOctaves = [4, 3, 5]; for (const oct of targetOctaves) { const rootNoteName = initialMelodyRootPitchClass + oct; firstNoteForArpeggio = scalePaletteForGeneration.find(n => n.note === rootNoteName); if (firstNoteForArpeggio) break; } if (!firstNoteForArpeggio) firstNoteForArpeggio = scalePaletteForGeneration.find(n => n.pitchClass === initialMelodyRootPitchClass); if (!firstNoteForArpeggio) firstNoteForArpeggio = scalePaletteForGeneration.length > 0 ? scalePaletteForGeneration[0] : null; if (!firstNoteForArpeggio) return []; const arpTypePattern = ARPEGGIO_TYPES[Math.floor(Math.random() * ARPEGGIO_TYPES.length)]; const isAscending = Math.random() < 0.5; let currentRootNoteInArpCycle = firstNoteForArpeggio; let currentArpNoteIndexInPattern = 0; for (let i = 0; i < melodyLength; i++) { const scaleDegreeOffset = arpTypePattern[currentArpNoteIndexInPattern]; let rootPaletteIndexOfCurrentCycle = scalePaletteForGeneration.findIndex(n => n.midi === currentRootNoteInArpCycle.midi); if (rootPaletteIndexOfCurrentCycle === -1) rootPaletteIndexOfCurrentCycle = 0; let targetNoteIndexInPalette; targetNoteIndexInPalette = rootPaletteIndexOfCurrentCycle + scaleDegreeOffset; targetNoteIndexInPalette = Math.max(0, Math.min(scalePaletteForGeneration.length - 1, targetNoteIndexInPalette)); const noteForArpeggio = scalePaletteForGeneration[targetNoteIndexInPalette]; if (noteForArpeggio) { let durationFactor = ARPEGGIO_NOTE_DURATION_FACTOR; arpeggio.push({ ...noteForArpeggio, durationFactor: durationFactor }); currentArpNoteIndexInPattern = (currentArpNoteIndexInPattern + 1) % arpTypePattern.length; if (currentArpNoteIndexInPattern === 0) { const nextOctaveRootMidi = currentRootNoteInArpCycle.midi + (isAscending ? 12 : -12); const nextOctaveRoot = scalePaletteForGeneration.find(n => n.midi === nextOctaveRootMidi); currentRootNoteInArpCycle = nextOctaveRoot || currentRootNoteInArpCycle; } } else { break; } } if (!isAscending && arpeggio.length > 1 && Math.random() < 0.7) { return arpeggio.reverse(); } return arpeggio; }
+        function generateRepeatingChordVoicingSequence(scalePalette, rootPitchClass, melodyLength) { if (!scalePalette || scalePalette.length < 3) return []; const sequence = []; let rootNoteForChord = scalePalette.find(n => n.pitchClass === rootPitchClass && n.octave === 3) || scalePalette.find(n => n.pitchClass === rootPitchClass && n.octave === 4) || scalePalette.find(n => n.pitchClass === rootPitchClass); if (!rootNoteForChord) rootNoteForChord = scalePalette[0]; const rootIndexInPalette = scalePalette.indexOf(rootNoteForChord); if (rootIndexInPalette === -1) return []; const chordNotesData = []; for (const degree of REPEATING_CHORD_DEGREES) { if ((rootIndexInPalette + degree) < scalePalette.length) { chordNotesData.push(scalePalette[rootIndexInPalette + degree]); } } if (chordNotesData.length < 2) return []; for (let i = 0; i < melodyLength; i++) { sequence.push({ notes: chordNotesData, durationFactor: REPEATING_CHORD_DURATION_FACTOR, conceptualRoot: rootNoteForChord }); } return sequence; }
+        function generateChordToneMelody(scalePalette, rootPitchClass, melodyLength) { if (!scalePalette || scalePalette.length === 0) return []; const melody = []; const diatonicChords = getDiatonicTriads(rootPitchClass, autoPlaySettings.originalScalePattern); if (diatonicChords.length === 0) return generateRandomMelody(scalePalette, rootPitchClass, false, melodyLength); const chordProgressionIndices = [0, 3 % diatonicChords.length, 4 % diatonicChords.length, 0]; autoPlaySettings.chordToneMelodyChordProgression = chordProgressionIndices.map(idx => diatonicChords[idx]); autoPlaySettings.currentChordInProgressionIndex = 0; let notesInCurrentChord = autoPlaySettings.chordToneMelodyChordProgression[0].notes.map(n => scalePalette.find(spn => spn.note === n)).filter(Boolean); let previousNote = notesInCurrentChord.length > 0 ? notesInCurrentChord[Math.floor(Math.random() * notesInCurrentChord.length)] : scalePalette[Math.floor(Math.random() * scalePalette.length)]; melody.push({ ...previousNote, durationFactor: RHYTHM_PATTERNS.standard[Math.floor(Math.random() * RHYTHM_PATTERNS.standard.length)] }); for (let i = 1; i < melodyLength; i++) { if (i % Math.ceil(melodyLength / chordProgressionIndices.length) === 0 && autoPlaySettings.currentChordInProgressionIndex < chordProgressionIndices.length -1) { autoPlaySettings.currentChordInProgressionIndex++; notesInCurrentChord = autoPlaySettings.chordToneMelodyChordProgression[autoPlaySettings.currentChordInProgressionIndex].notes.map(n => scalePalette.find(spn => spn.note === n)).filter(Boolean); } let candidates = notesInCurrentChord.filter(n => n.note !== previousNote.note && Math.abs(n.midi - previousNote.midi) < 10); if (candidates.length === 0) candidates = notesInCurrentChord.filter(n => n.note !== previousNote.note); if (candidates.length === 0) candidates = scalePalette.filter(n => n.note !== previousNote.note && Math.abs(n.midi - previousNote.midi) < 7); if (candidates.length === 0) candidates = [previousNote]; previousNote = candidates[Math.floor(Math.random() * candidates.length)]; melody.push({ ...previousNote, durationFactor: RHYTHM_PATTERNS.standard[Math.floor(Math.random() * RHYTHM_PATTERNS.standard.length)] }); } return melody; }
+        function generateRepeatingBassPattern(scalePalette, rootPitchClass, patternLength = 4) { const bassPattern = []; let startNote = scalePalette.find(n => n.pitchClass === rootPitchClass && n.octave === 3) || scalePalette.find(n => n.pitchClass === rootPitchClass && n.octave === 2) || (scalePalette.length > 0 ? scalePalette[0] : null); if (!startNote) return []; let currentNote = startNote; for (let i = 0; i < patternLength; i++) { bassPattern.push(currentNote); let currentIndex = scalePalette.indexOf(currentNote); if(currentIndex === -1) currentIndex = 0; let nextIndex = currentIndex + (Math.random() < 0.5 ? 1 : -1); nextIndex = Math.max(0, Math.min(scalePalette.length - 1, nextIndex)); currentNote = scalePalette[nextIndex]; } return bassPattern; }
+        function transposeAndSnapMelodyToPalette(baseMelody, semitonesToTranspose, targetScalePalette) { const transposedAndSnapped = []; if (!targetScalePalette || targetScalePalette.length === 0) return baseMelody; for (const originalMelodyNote of baseMelody) { if (Array.isArray(originalMelodyNote.notes)) { const snappedChordNotes = []; let allNotesSnapped = true; for (const chordSubNote of originalMelodyNote.notes) { const targetMidi = chordSubNote.midi + semitonesToTranspose; let closestNoteInPalette = targetScalePalette[0]; let minDiff = Math.abs(targetMidi - closestNoteInPalette.midi); for (let k = 1; k < targetScalePalette.length; k++) { const diff = Math.abs(targetMidi - targetScalePalette[k].midi); if (diff < minDiff) { minDiff = diff; closestNoteInPalette = targetScalePalette[k]; } } if(closestNoteInPalette) snappedChordNotes.push(closestNoteInPalette); else allNotesSnapped = false; } if(allNotesSnapped && snappedChordNotes.length > 0) { transposedAndSnapped.push({ notes: snappedChordNotes, durationFactor: originalMelodyNote.durationFactor, conceptualRoot: snappedChordNotes[0] }); } else { transposedAndSnapped.push({...originalMelodyNote}); } } else { const targetMidi = originalMelodyNote.midi + semitonesToTranspose; let closestNoteInPalette = targetScalePalette[0]; let minDiff = Math.abs(targetMidi - closestNoteInPalette.midi); for (let k = 1; k < targetScalePalette.length; k++) { const diff = Math.abs(targetMidi - targetScalePalette[k].midi); if (diff < minDiff) { minDiff = diff; closestNoteInPalette = targetScalePalette[k]; } } transposedAndSnapped.push({ ...closestNoteInPalette, durationFactor: originalMelodyNote.durationFactor }); } } return transposedAndSnapped.length > 0 ? transposedAndSnapped : baseMelody; }
+        function generateScaleRun() { if(fixedOriginalScalePalette.length === 0) return []; const oneOctaveScale = []; let preferredStart = fixedOriginalScalePalette.find(n => n.octave === 4 && n.pitchClass === autoPlaySettings.originalRootPitchClass) || fixedOriginalScalePalette.find(n => n.octave === 3 && n.pitchClass === autoPlaySettings.originalRootPitchClass) || fixedOriginalScalePalette.find(n => n.pitchClass === autoPlaySettings.originalRootPitchClass) || fixedOriginalScalePalette[0]; let startIndex = fixedOriginalScalePalette.indexOf(preferredStart); if(startIndex === -1) startIndex = 0; const scalePatternLength = autoPlaySettings.originalScalePattern.split('').length; for (let i = 0; i <= scalePatternLength; i++) { const noteIndex = startIndex + i; if (noteIndex < fixedOriginalScalePalette.length) { oneOctaveScale.push({ ...fixedOriginalScalePalette[noteIndex], durationFactor: SCALE_RUN_NOTE_DURATION_FACTOR }); } else break; } if (Math.random() < 0.5 && oneOctaveScale.length > 1) return oneOctaveScale.reverse(); return oneOctaveScale; }
+        function playNextMelodyNote() { if (!isAutoPlaying) { stopAutoPlay(true); return; } let notesPlayedThisBeat = []; const playingNotesDisplay = document.getElementById('currentlyPlayingNotesDisplay'); if(playingNotesDisplay) playingNotesDisplay.innerHTML = ''; lastAutoPlayedChordKeyElements.forEach(el => el.classList.remove('auto-playing-note')); lastAutoPlayedChordKeyElements = []; if (currentMelody.length === 0) { console.warn("Current melody empty."); stopAutoPlay(); return; } const currentBeatData = currentMelody[currentMelodyNoteIndex]; let mainNoteForBeatLogic; let durationFactorForBeat; if (autoPlaySettings.isPlayingRepeatingChords && Array.isArray(currentBeatData.notes)) { mainNoteForBeatLogic = currentBeatData.conceptualRoot || currentBeatData.notes[0]; durationFactorForBeat = currentBeatData.durationFactor; } else { mainNoteForBeatLogic = currentBeatData; durationFactorForBeat = currentBeatData.durationFactor; } if (!mainNoteForBeatLogic || !mainNoteForBeatLogic.frequency) { console.warn("Invalid main note for beat logic, skipping.", mainNoteForBeatLogic); currentMelodyNoteIndex = (currentMelodyNoteIndex + 1) % currentMelody.length; if (currentMelodyNoteIndex === 0) currentMelodyRepetitionCount++; autoPlayTimeoutId = setTimeout(playNextMelodyNote, autoPlaySettings.currentTempoMs); return; } const notesToPlayOnThisBeat = []; if (autoPlaySettings.isPlayingRepeatingChords && Array.isArray(currentBeatData.notes)) { currentBeatData.notes.forEach(note => { notesToPlayOnThisBeat.push({ noteData: note, gain: CHORD_VOICING_GAIN_SCALE }); }); } else if (!isPlayingScaleRun) { notesToPlayOnThisBeat.push({ noteData: mainNoteForBeatLogic, gain: 1 }); } else { notesToPlayOnThisBeat.push({ noteData: mainNoteForBeatLogic, gain: 1 }); } if (!isPlayingScaleRun) { let bassRootForCurrentBeat = mainNoteForBeatLogic; if (autoPlaySettings.isPlayingRepeatingChords && currentBeatData.conceptualRoot) { bassRootForCurrentBeat = currentBeatData.conceptualRoot; } else if (autoPlaySettings.repeatingBassPattern.length > 0 && autoPlaySettings.currentSongSection === 'B' && !autoPlaySettings.isPlayingArpeggio) { bassRootForCurrentBeat = autoPlaySettings.repeatingBassPattern[autoPlaySettings.currentRepeatingBassIndex]; } else if (autoPlaySettings.currentSongSection === 'C' && autoPlaySettings.chordToneMelodyChordProgression.length > 0) { const currentChordForBass = autoPlaySettings.chordToneMelodyChordProgression[autoPlaySettings.currentChordInProgressionIndex]; bassRootForCurrentBeat = fixedOriginalScalePalette.find(n => n.note === currentChordForBass.notes[0]) || mainNoteForBeatLogic; } const bassNoteMidiTarget = bassRootForCurrentBeat.midi - 12; let actualBassNoteInScale = fixedOriginalScalePalette.find(n => n.midi === bassNoteMidiTarget); if (autoPlaySettings.isPlayingArpeggio && currentMelodyNoteIndex > 0 && Math.random() < BASS_ALTERNATION_PROBABILITY) { const arpRootMidi = originalGeneratedMelody[0].midi; const currentTransposition = TRANSPOSITION_LEVEL_SEQUENCE[currentTranspositionCycleIndex]; const effectiveArpRootMidi = arpRootMidi + currentTransposition; const effectiveArpRootInPalette = fixedOriginalScalePalette.find(n => n.midi === effectiveArpRootMidi) || fixedOriginalScalePalette[0]; const arpRootIndexInPalette = fixedOriginalScalePalette.indexOf(effectiveArpRootInPalette); if (arpRootIndexInPalette !== -1 && (arpRootIndexInPalette + 4) < fixedOriginalScalePalette.length) { const fifthDegreeNote = fixedOriginalScalePalette[arpRootIndexInPalette + 4]; const fifthBassMidiTarget = fifthDegreeNote.midi - 12; const alternateBassTarget = fixedOriginalScalePalette.find(n => n.midi === fifthBassMidiTarget) || fixedOriginalScalePalette.find(n => n.midi === fifthDegreeNote.midi - 24); if(alternateBassTarget) actualBassNoteInScale = alternateBassTarget; } } currentArpeggioBassNote = actualBassNoteInScale; if (actualBassNoteInScale && actualBassNoteInScale.frequency) { if(!notesToPlayOnThisBeat.find(n => n.noteData.midi === actualBassNoteInScale.midi)) { notesToPlayOnThisBeat.push({ noteData: actualBassNoteInScale, gain: 0.7 }); } if (Math.random() < BASS_HARMONY_PROBABILITY && fixedOriginalScalePalette.length > 0) { const bassNoteIndexInPalette = fixedOriginalScalePalette.findIndex(n => n.midi === actualBassNoteInScale.midi); if (bassNoteIndexInPalette !== -1) { if ((bassNoteIndexInPalette + 2) < fixedOriginalScalePalette.length) { const bassHarmony3rd = fixedOriginalScalePalette[bassNoteIndexInPalette + 2]; if (bassHarmony3rd && bassHarmony3rd.frequency && !notesToPlayOnThisBeat.find(n=>n.noteData.midi === bassHarmony3rd.midi)) { notesToPlayOnThisBeat.push({ noteData: bassHarmony3rd, gain: 0.7 * BASS_HARMONY_GAIN_SCALE }); } } if ((bassNoteIndexInPalette + 4) < fixedOriginalScalePalette.length) { const bassHarmony5th = fixedOriginalScalePalette[bassNoteIndexInPalette + 4]; if (bassHarmony5th && bassHarmony5th.frequency && !notesToPlayOnThisBeat.find(n=>n.noteData.midi === bassHarmony5th.midi)) { notesToPlayOnThisBeat.push({ noteData: bassHarmony5th, gain: 0.7 * BASS_HARMONY_GAIN_SCALE }); } } } } } } if (!isPlayingScaleRun && !autoPlaySettings.isPlayingArpeggio && !autoPlaySettings.isPlayingRepeatingChords && autoPlaySettings.currentSongSection !== 'C' && Math.random() < PROBABILITY_PLAY_CHORDAL) { if (fixedOriginalScalePalette && fixedOriginalScalePalette.length > 0) { const mainMelodyNoteIndexInPalette = fixedOriginalScalePalette.findIndex(n => n.midi === mainNoteForBeatLogic.midi); if (mainMelodyNoteIndexInPalette !== -1) { if ((mainMelodyNoteIndexInPalette - 2) >= 0) { const chordNote2 = fixedOriginalScalePalette[mainMelodyNoteIndexInPalette - 2]; if (chordNote2 && chordNote2.frequency && !notesToPlayOnThisBeat.find(n=>n.noteData.midi === chordNote2.midi)) { notesToPlayOnThisBeat.push({ noteData: chordNote2, gain: CHORD_VOICING_GAIN_SCALE }); } } if ((mainMelodyNoteIndexInPalette - 4) >= 0) { const chordNote3 = fixedOriginalScalePalette[mainMelodyNoteIndexInPalette - 4]; if (chordNote3 && chordNote3.frequency && !notesToPlayOnThisBeat.find(n=>n.noteData.midi === chordNote3.midi)) { notesToPlayOnThisBeat.push({ noteData: chordNote3, gain: CHORD_VOICING_GAIN_SCALE }); } } } } } notesToPlayOnThisBeat.forEach(item => { playNote(item.noteData.frequency, item.gain, item.noteData.midi, true); notesPlayedThisBeat.push(item.noteData.note); const keyDataToHighlight = keysData.find(kd => kd.note === item.noteData.note); if (keyDataToHighlight) { const domElement = document.getElementById('key' + keyDataToHighlight.idSuffix); if (domElement && !domElement.classList.contains('auto-playing-note')) { domElement.classList.add('auto-playing-note'); lastAutoPlayedChordKeyElements.push(domElement); } } }); if(playingNotesDisplay) { const uniqueDisplayNotes = [...new Set(notesPlayedThisBeat)]; uniqueDisplayNotes.sort().forEach(noteName => { const noteEl = document.createElement('span'); noteEl.classList.add('playing-note-item'); noteEl.textContent = noteName; playingNotesDisplay.appendChild(noteEl); }); } const duration = durationFactorForBeat * autoPlaySettings.currentTempoMs; currentMelodyNoteIndex++; if (currentMelodyNoteIndex >= currentMelody.length) { currentMelodyNoteIndex = 0; currentMelodyRepetitionCount++; const repsForCurrentSegment = isPlayingScaleRun || autoPlaySettings.isPlayingRepeatingChords || autoPlaySettings.currentSongSection === 'C' ? 1 : MELODY_REPETITIONS; if (currentMelodyRepetitionCount >= repsForCurrentSegment) { currentMelodyRepetitionCount = 0; currentArpeggioBassNote = null; if (autoPlaySettings.currentSongSection === 'B') autoPlaySettings.currentRepeatingBassIndex = (autoPlaySettings.currentRepeatingBassIndex + 1) % (autoPlaySettings.repeatingBassPattern.length || 1); if (isPlayingScaleRun) { isPlayingScaleRun = false; currentTranspositionCycleIndex = (currentTranspositionCycleIndex + 1) % TRANSPOSITION_LEVEL_SEQUENCE.length; if (currentTranspositionCycleIndex === 0) autoPlaySettings.currentSongSectionIndex = (autoPlaySettings.currentSongSectionIndex + 1) % SONG_STRUCTURE.length; } else if (Math.random() < SCALE_RUN_PROBABILITY && !autoPlaySettings.isPlayingRepeatingChords && autoPlaySettings.currentSongSection !== 'C') { const scaleRun = generateScaleRun(); if (scaleRun.length > 0) { currentMelody = scaleRun; isPlayingScaleRun = true; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; } else { isPlayingScaleRun = false; currentTranspositionCycleIndex = (currentTranspositionCycleIndex + 1) % TRANSPOSITION_LEVEL_SEQUENCE.length; if (currentTranspositionCycleIndex === 0) autoPlaySettings.currentSongSectionIndex = (autoPlaySettings.currentSongSectionIndex + 1) % SONG_STRUCTURE.length;} } else { isPlayingScaleRun = false; currentTranspositionCycleIndex = (currentTranspositionCycleIndex + 1) % TRANSPOSITION_LEVEL_SEQUENCE.length; if (currentTranspositionCycleIndex === 0) { autoPlaySettings.currentSongSectionIndex = (autoPlaySettings.currentSongSectionIndex + 1) % SONG_STRUCTURE.length; } } if (!isPlayingScaleRun) { if (currentTranspositionCycleIndex === 0) { autoPlaySettings.currentTempoMs = effectiveBaseTempoMs * (1 + (Math.random() - 0.5) * TEMPO_VARIATION_PERCENT * 2); if (Math.random() < SLOW_TEMPO_PROBABILITY) autoPlaySettings.currentTempoMs *= SLOW_TEMPO_MULTIPLIER; const sigChoice = TIME_SIGNATURE_CONFIGS[Math.floor(Math.random() * TIME_SIGNATURE_CONFIGS.length)]; autoPlaySettings.currentMelodyLength = sigChoice.notesPerBar * sigChoice.bars; autoPlaySettings.isMonorhythmic = Math.random() < MONORHYTHM_PROBABILITY; const currentSectionType = SONG_STRUCTURE[autoPlaySettings.currentSongSectionIndex]; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; autoPlaySettings.repeatingBassPattern = []; autoPlaySettings.currentRepeatingBassIndex = 0; if (currentSectionType === 'A') { if (Math.random() < ARPEGGIO_PROBABILITY) { originalGeneratedMelody = generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingArpeggio = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } } else if (currentSectionType === 'B') { if (Math.random() < REPEATING_CHORD_PROBABILITY) { originalGeneratedMelody = generateRepeatingChordVoicingSequence(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingRepeatingChords = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); if(Math.random() < 0.7) autoPlaySettings.repeatingBassPattern = generateRepeatingBassPattern(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass); } } else if (currentSectionType === 'C') { originalGeneratedMelody = generateChordToneMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } if (originalGeneratedMelody.length === 0) { stopAutoPlay(); return; } } const transpositionSemitones = TRANSPOSITION_LEVEL_SEQUENCE[currentTranspositionCycleIndex]; currentMelody = transposeAndSnapMelodyToPalette(originalGeneratedMelody, transpositionSemitones, fixedOriginalScalePalette); if (currentMelody.length === 0) { const currentSectionType = SONG_STRUCTURE[autoPlaySettings.currentSongSectionIndex]; if (currentSectionType === 'A') { originalGeneratedMelody = (Math.random() < ARPEGGIO_PROBABILITY) ? generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength) : generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingArpeggio = (originalGeneratedMelody[0] && originalGeneratedMelody[0].durationFactor === ARPEGGIO_NOTE_DURATION_FACTOR); } else if (currentSectionType === 'B') { originalGeneratedMelody = (Math.random() < REPEATING_CHORD_PROBABILITY) ? generateRepeatingChordVoicingSequence(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength) : generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingRepeatingChords = (originalGeneratedMelody[0] && Array.isArray(originalGeneratedMelody[0].notes)); if(!autoPlaySettings.isPlayingRepeatingChords && Math.random() < 0.7) autoPlaySettings.repeatingBassPattern = generateRepeatingBassPattern(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass);} else if (currentSectionType === 'C') { originalGeneratedMelody = generateChordToneMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); } else {originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength);} currentMelody = [...originalGeneratedMelody]; currentTranspositionCycleIndex = 0; if(currentMelody.length === 0) { stopAutoPlay(); return; } } } } } autoPlayTimeoutId = setTimeout(playNextMelodyNote, duration); }
+        function startAutoPlay() { if (isAutoPlaying) return; autoPlaySettings.originalRootPitchClass = document.getElementById('rootNoteSelect').value; autoPlaySettings.originalScalePattern = document.getElementById('semistepsInput').value; fixedOriginalScalePalette = getFullScaleRange(autoPlaySettings.originalRootPitchClass, autoPlaySettings.originalScalePattern); if (fixedOriginalScalePalette.length < 2) { alert("Not enough notes in selected scale."); return; } autoPlaySettings.currentSongSectionIndex = 0; const initialSectionType = SONG_STRUCTURE[autoPlaySettings.currentSongSectionIndex]; autoPlaySettings.currentTempoMs = effectiveBaseTempoMs * (1 + (Math.random() - 0.5) * TEMPO_VARIATION_PERCENT * 2); if (Math.random() < SLOW_TEMPO_PROBABILITY) autoPlaySettings.currentTempoMs *= SLOW_TEMPO_MULTIPLIER; const sigChoice = TIME_SIGNATURE_CONFIGS[Math.floor(Math.random() * TIME_SIGNATURE_CONFIGS.length)]; autoPlaySettings.currentMelodyLength = sigChoice.notesPerBar * sigChoice.bars; autoPlaySettings.isMonorhythmic = Math.random() < MONORHYTHM_PROBABILITY; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; autoPlaySettings.repeatingBassPattern = []; autoPlaySettings.currentRepeatingBassIndex = 0; if (initialSectionType === 'A') { if (Math.random() < ARPEGGIO_PROBABILITY) { originalGeneratedMelody = generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingArpeggio = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } } else if (initialSectionType === 'B') { if (Math.random() < REPEATING_CHORD_PROBABILITY) { originalGeneratedMelody = generateRepeatingChordVoicingSequence(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingRepeatingChords = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); if(Math.random() < 0.6) autoPlaySettings.repeatingBassPattern = generateRepeatingBassPattern(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass); } } else if (initialSectionType === 'C') { originalGeneratedMelody = generateChordToneMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } if (originalGeneratedMelody.length === 0) { alert("Could not generate initial melody."); return; } isAutoPlaying = true; document.getElementById('autoPlayBtn').textContent = 'Stop Generative Play'; document.getElementById('autoPlayBtn').classList.add('playing'); currentMelody = [...originalGeneratedMelody]; currentMelodyNoteIndex = 0; currentMelodyRepetitionCount = 0; currentTranspositionCycleIndex = 0; isPlayingScaleRun = false; currentArpeggioBassNote = null; playNextMelodyNote(); }
+        function stopAutoPlay(resetButtonUI = true) { isAutoPlaying = false; clearTimeout(autoPlayTimeoutId); autoPlayTimeoutId = null; isPlayingScaleRun = false; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; autoPlaySettings.repeatingBassPattern = []; currentArpeggioBassNote = null; lastAutoPlayedChordKeyElements.forEach(el => el.classList.remove('auto-playing-note')); lastAutoPlayedChordKeyElements = []; activeMidiNotes.forEach(timeoutId => clearTimeout(timeoutId)); activeMidiNotes.clear(); const playingNotesDisplay = document.getElementById('currentlyPlayingNotesDisplay'); if(playingNotesDisplay) playingNotesDisplay.innerHTML = ''; if (resetButtonUI) { const autoPlayBtn = document.getElementById('autoPlayBtn'); if (autoPlayBtn) { autoPlayBtn.textContent = 'Start Generative Play'; autoPlayBtn.classList.remove('playing'); } } }
+        function toggleAutoPlay() { if (!initAudioContext()) return; if (isAutoPlaying) stopAutoPlay(); else startAutoPlay(); }
+        function updateSemitoneSum() {
+            const semistepsInput = document.getElementById('semistepsInput');
+            const sumDisplay = document.getElementById('semistepsSumDisplay');
+            const sum = semistepsInput.value.split('')
+                .map(Number)
+                .filter(n => !isNaN(n))
+                .reduce((a, b) => a + b, 0);
+            
+            sumDisplay.textContent = `(Sum: ${sum})`;
+            sumDisplay.classList.toggle('non-octave', sum !== 12 && sum !== 0);
+        }
+        function applyScaleFilter() {
+            stopAutoPlay(true); 
+            const rootNote = document.getElementById('rootNoteSelect').value;
+            const semisteps = document.getElementById('semistepsInput').value;
+            const { notesWithIntervals, fullNoteNames } = getScaleNotesWithOctaves(rootNote, semisteps);
+            document.querySelectorAll('.key').forEach(keyElement => {
+                keyElement.classList.remove('chord-note-active', 'auto-playing-note'); 
+                const keyPitchClass = keyElement.dataset.pitchClass; 
+                const originalNoteName = keyElement.dataset.originalNoteName; 
+                const labelElement = keyElement.querySelector('.key-label');
+                const noteInfoInScaleForInterval = notesWithIntervals.find(sci => sci.note === originalNoteName);
+                const isPitchClassInScale = notesWithIntervals.some(sci => sci.pitchClass === keyPitchClass);
+                if (isPitchClassInScale) { keyElement.classList.remove('key-disabled'); if (noteInfoInScaleForInterval) { labelElement.innerHTML = `${originalNoteName}<br>(${noteInfoInScaleForInterval.interval})`; } else { const anyIntervalForPitchClass = notesWithIntervals.find(sci => sci.pitchClass === keyPitchClass); if (anyIntervalForPitchClass) { labelElement.innerHTML = `${originalNoteName}<br>(${anyIntervalForPitchClass.interval})`; } else { labelElement.textContent = originalNoteName; }} } else { keyElement.classList.add('key-disabled'); labelElement.textContent = originalNoteName; }
+            });
+            const scaleNotesDisplay = document.getElementById('scaleNotesDisplay'); scaleNotesDisplay.innerHTML = ''; fullNoteNames.forEach(noteName => { const noteEl = document.createElement('span'); noteEl.classList.add('scale-note-item'); noteEl.textContent = noteName; scaleNotesDisplay.appendChild(noteEl); });
+            const chordButtonsDisplay = document.getElementById('chordButtonsDisplay'); chordButtonsDisplay.innerHTML = ''; const triads = getDiatonicTriads(rootNote, semisteps);
+            triads.forEach(triad => { const button = document.createElement('button'); button.classList.add('chord-button'); button.textContent = triad.label; button.dataset.chordNotes = JSON.stringify(triad.notes); button.addEventListener('click', () => playAndHighlightChord(triad.notes)); chordButtonsDisplay.appendChild(button); });
+            updateSemitoneSum();
+        }
+        let activeChordHighlightTimeout; function playAndHighlightChord(chordNoteNames) { if (!initAudioContext()) return; clearTimeout(activeChordHighlightTimeout); document.querySelectorAll('.key.chord-note-active').forEach(k => k.classList.remove('chord-note-active')); chordNoteNames.forEach(noteName => { const keyToPlay = keysData.find(kd => kd.note === noteName); if (keyToPlay && keyToPlay.frequency) { playNote(keyToPlay.frequency, 1, keyToPlay.midi, false); const keyElement = document.getElementById('key' + keyToPlay.idSuffix); if (keyElement) keyElement.classList.add('chord-note-active'); } }); activeChordHighlightTimeout = setTimeout(() => { document.querySelectorAll('.key.chord-note-active').forEach(k => k.classList.remove('chord-note-active')); }, 1000); }
+
+        // --- MIDI Setup ---
+        function initMidiOut() {
+            const midiOutToggleBtn = document.getElementById('midiOutToggleBtn'); const midiOutSelect = document.getElementById('midiOutSelect');
+            if (isMidiOutEnabled) { isMidiOutEnabled = false; currentMidiOutput = null; midiOutSelect.innerHTML = '<option value="">(MIDI Disabled)</option>'; midiOutSelect.disabled = true; midiOutToggleBtn.textContent = 'Enable MIDI'; midiOutToggleBtn.classList.remove('active'); activeMidiNotes.forEach(timeoutId => clearTimeout(timeoutId)); activeMidiNotes.clear(); return; }
+            if (navigator.requestMIDIAccess) { navigator.requestMIDIAccess({ sysex: false }).then(onMIDIOutSuccess, onMIDIFailure); } else { alert("Web MIDI API is not supported."); midiOutToggleBtn.textContent = 'Enable MIDI'; midiOutToggleBtn.classList.remove('active'); }
+        }
+        function onMIDIOutSuccess(mAccess) { midiAccess = mAccess; const midiOutSelect = document.getElementById('midiOutSelect'); const midiOutToggleBtn = document.getElementById('midiOutToggleBtn'); const outputs = midiAccess.outputs.values(); midiOutSelect.innerHTML = ''; let firstOutput = null; for (let output = outputs.next(); output && !output.done; output = outputs.next()) { if (!firstOutput) firstOutput = output.value; const option = document.createElement('option'); option.value = output.value.id; option.textContent = output.value.name; midiOutSelect.appendChild(option); } if (firstOutput) { currentMidiOutput = firstOutput; midiOutSelect.value = firstOutput.id; midiOutSelect.disabled = false; isMidiOutEnabled = true; midiOutToggleBtn.textContent = 'Disable MIDI'; midiOutToggleBtn.classList.add('active'); } else { midiOutSelect.innerHTML = '<option value="">No MIDI devices</option>'; midiOutSelect.disabled = true; isMidiOutEnabled = false; midiOutToggleBtn.textContent = 'Enable MIDI'; midiOutToggleBtn.classList.remove('active'); alert("No MIDI output devices found."); } }
+        function onMIDIFailure(msg) { console.error(`Failed to get MIDI access - ${msg}`); alert(`Failed to get MIDI access: ${msg}`); document.getElementById('midiOutToggleBtn').classList.remove('active'); document.getElementById('midiInToggleBtn').classList.remove('active'); isMidiOutEnabled = false; isMidiInEnabled = false; }
+        
+        function initMidiIn() {
+            const midiInToggleBtn = document.getElementById('midiInToggleBtn'); const midiInSelect = document.getElementById('midiInSelect');
+            if (isMidiInEnabled) { if(currentMidiInput) currentMidiInput.onmidimessage = null; isMidiInEnabled = false; currentMidiInput = null; midiInSelect.innerHTML = '<option value="">(MIDI Disabled)</option>'; midiInSelect.disabled = true; midiInToggleBtn.textContent = 'Enable MIDI'; midiInToggleBtn.classList.remove('active'); return; }
+            if (navigator.requestMIDIAccess) { navigator.requestMIDIAccess({ sysex: false }).then(onMIDIInSuccess, onMIDIFailure); } else { alert("Web MIDI API is not supported."); midiInToggleBtn.classList.remove('active'); }
+        }
+        function onMIDIInSuccess(mAccess) { midiAccess = mAccess; const midiInSelect = document.getElementById('midiInSelect'); const midiInToggleBtn = document.getElementById('midiInToggleBtn'); const inputs = midiAccess.inputs.values(); midiInSelect.innerHTML = ''; let firstInput = null; for (let input = inputs.next(); input && !input.done; input = inputs.next()) { if (!firstInput) firstInput = input.value; const option = document.createElement('option'); option.value = input.value.id; option.textContent = input.value.name; midiInSelect.appendChild(option); } if (firstInput) { setMidiInputDevice(firstInput.id); midiInSelect.value = firstInput.id; midiInSelect.disabled = false; isMidiInEnabled = true; midiInToggleBtn.textContent = 'Disable MIDI'; midiInToggleBtn.classList.add('active'); } else { midiInSelect.innerHTML = '<option value="">No MIDI devices</option>'; midiInSelect.disabled = true; isMidiInEnabled = false; midiInToggleBtn.textContent = 'Enable MIDI'; midiInToggleBtn.classList.remove('active'); alert("No MIDI input devices found."); } }
+        function setMidiInputDevice(deviceId) { if (currentMidiInput) { currentMidiInput.onmidimessage = null; } currentMidiInput = midiAccess.inputs.get(deviceId); if (currentMidiInput) { currentMidiInput.onmidimessage = handleMidiMessage; } }
+        function handleMidiMessage(message) {
+            const [commandByte, noteNumber, velocity] = message.data;
+            const command = commandByte >> 4;
+            const keyData = keysData.find(k => k.midi === noteNumber);
+            if (!keyData) return;
+            const keyElement = document.getElementById('key' + keyData.idSuffix);
+            if (command === 9 && velocity > 0) { // Note On
+                if (!initAudioContext()) return;
+                userHeldNotes.add(noteNumber);
+                updateChordDisplay();
+                const gainScale = velocity / 127;
+                playNote(keyData.frequency, gainScale, keyData.midi, false);
+                if (keyElement) keyElement.classList.add('pressed');
+            } else if (command === 8 || (command === 9 && velocity === 0)) { // Note Off
+                userHeldNotes.delete(noteNumber);
+                updateChordDisplay();
+                if (keyElement) keyElement.classList.remove('pressed');
+            }
+        }
+        
+        // --- Export/Import & Sampler ---
+        function exportScales() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(PREDEFINED_SCALES, null, 2)); const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr); downloadAnchorNode.setAttribute("download", "custom_piano_scales.json"); document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove(); }
+        function importScales() { document.getElementById('scalesFileInput').click(); }
+        function handleScaleFileImport(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const importedScales = JSON.parse(e.target.result); if (Array.isArray(importedScales) && importedScales.every(s => s && typeof s.name === 'string' && typeof s.steps === 'string')) { PREDEFINED_SCALES = importedScales; populateScaleDropdowns(); const scaleSelect = document.getElementById('scaleSelect'); if (scaleSelect.options.length > 0) { scaleSelect.selectedIndex = 0; document.getElementById('semistepsInput').value = scaleSelect.value; } applyScaleFilter(); alert("Scales imported successfully!"); } else { alert("Invalid scale file format."); } } catch (error) { console.error("Error parsing scale file:", error); alert("Error parsing scale file: " + error.message); } }; reader.readAsText(file); event.target.value = null; }
+        function exportSounds() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(PREDEFINED_SOUNDS, null, 2)); const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr); downloadAnchorNode.setAttribute("download", "custom_piano_sounds.json"); document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove(); }
+        function importSounds() { document.getElementById('soundsFileInput').click(); }
+        function handleSoundFileImport(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const importedSounds = JSON.parse(e.target.result); if (Array.isArray(importedSounds) && importedSounds.every(s => s && s.id && s.name && s.params)) { PREDEFINED_SOUNDS = importedSounds; populateSoundSelect(); alert("Sounds imported successfully!"); } else { alert("Invalid sound file format. Ensure it's an array of sound objects with id, name, and params properties."); } } catch (error) { console.error("Error parsing sound file:", error); alert("Error parsing sound file: " + error.message); } }; reader.readAsText(file); event.target.value = null; }
+        function loadSample() { document.getElementById('sampleFileInput').click(); }
+        function handleSampleFileImport(event) {
+            const file = event.target.files[0]; if (!file) return;
+            if (!initAudioContext()) { alert("Audio context must be initialized first. Please click the piano."); return; }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                audioContext.decodeAudioData(e.target.result,
+                    (buffer) => {
+                        samplerAudioBuffer = buffer;
+                        updateSamplerOptionInSelect(true); // Add and select the sampler option
+                        alert('Sample loaded successfully! "Sampler" sound type is now available and selected.');
+                    },
+                    (error) => {
+                        console.error("Error decoding audio data:", error);
+                        alert("Error decoding audio file: " + error.message);
+                    }
+                );
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = null;
+        }
+
+        // --- Setup & Event Listeners ---
+        function populateScaleDropdowns() { const rootNoteSelect = document.getElementById('rootNoteSelect'); const currentRoot = rootNoteSelect.value; rootNoteSelect.innerHTML = ''; ALL_NOTES_CHROMATIC.forEach(note => { const option = document.createElement('option'); option.value = note; option.textContent = note; rootNoteSelect.appendChild(option); }); rootNoteSelect.value = ALL_NOTES_CHROMATIC.includes(currentRoot) ? currentRoot : "C"; const scaleSelect = document.getElementById('scaleSelect'); const currentScaleSteps = scaleSelect.value; scaleSelect.innerHTML = ''; PREDEFINED_SCALES.forEach(scale => { const option = document.createElement('option'); option.value = scale.steps; option.textContent = scale.name; scaleSelect.appendChild(option); }); let foundSelected = false; const ionianIndex = PREDEFINED_SCALES.findIndex(s => s.name === "Ionian (Major)" || s.name === "Ionian"); for(let i=0; i < scaleSelect.options.length; i++){ if(scaleSelect.options[i].value === currentScaleSteps){ scaleSelect.selectedIndex = i; foundSelected = true; break; } } if(!foundSelected && scaleSelect.options.length > 0){ scaleSelect.selectedIndex = ionianIndex !== -1 ? ionianIndex : 0; } if(scaleSelect.value) document.getElementById('semistepsInput').value = scaleSelect.value; else if (scaleSelect.options.length > 0) document.getElementById('semistepsInput').value = scaleSelect.options[0].value; }
+        function updateSamplerOptionInSelect(selectAfterAdding = false) {
+            const soundSelect = document.getElementById('soundTypeSelect');
+            let samplerOption = soundSelect.querySelector('option[value="sampler"]');
+            if (samplerAudioBuffer) {
+                if (!samplerOption) { samplerOption = document.createElement('option'); samplerOption.value = 'sampler'; samplerOption.textContent = 'Sampler (Custom)'; soundSelect.appendChild(samplerOption); }
+                if (selectAfterAdding) { soundSelect.value = 'sampler'; }
+            } else {
+                if (samplerOption) { if (soundSelect.value === 'sampler') { soundSelect.selectedIndex = 0; } samplerOption.remove(); }
+            }
+        }
+        function populateSoundSelect() { const soundTypeSelect = document.getElementById('soundTypeSelect'); const currentSoundId = soundTypeSelect.value; soundTypeSelect.innerHTML = ''; PREDEFINED_SOUNDS.forEach(sound => { const option = document.createElement('option'); option.value = sound.id; option.textContent = sound.name; soundTypeSelect.appendChild(option); }); updateSamplerOptionInSelect(false); if (PREDEFINED_SOUNDS.some(s => s.id === currentSoundId)) { soundTypeSelect.value = currentSoundId; } else if (soundTypeSelect.value !== 'sampler') { const classicPiano = PREDEFINED_SOUNDS.find(s => s.id === "classic_piano"); soundTypeSelect.value = classicPiano ? classicPiano.id : PREDEFINED_SOUNDS[0].id; } }
+        
+        function toggleScaleSet() {
+            const toggleBtn = document.getElementById('scaleSetToggleBtn');
+            const scaleSelect = document.getElementById('scaleSelect');
+            const semistepsInput = document.getElementById('semistepsInput');
+
+            isZeitlerSetCurrent = !isZeitlerSetCurrent; // Flip the state
+
+            if (isZeitlerSetCurrent) {
+                PREDEFINED_SCALES = ZEITLER_SCALES;
+                toggleBtn.textContent = 'Switch to Basic Scales';
+            } else {
+                PREDEFINED_SCALES = BASIC_SCALES;
+                toggleBtn.textContent = 'Switch to Zeitler Scales';
+            }
+            populateScaleDropdowns();
+
+            // After populating, set the scale to the first one in the new list and update.
+            if (scaleSelect.options.length > 0) {
+                scaleSelect.selectedIndex = 0;
+                semistepsInput.value = scaleSelect.value;
+            }
+            applyScaleFilter();
+        }
+
+        function toggle88Keys() {
+            is88KeyMode = !is88KeyMode;
+            const btn = document.getElementById('toggle88KeysBtn');
+            stopAutoPlay(true);
+
+            if (is88KeyMode) {
+                generateKeysData('A0', 'C8');
+                btn.textContent = 'Switch to 3 Octaves';
+            } else {
+                generateKeysData('C3', 'B5');
+                btn.textContent = 'Switch to 88 Keys';
+            }
+            
+            // Rebuild the piano UI
+            createPianoKeys();
+            // Re-apply the current scale filter to the new keys
+            applyScaleFilter();
+        }
+
+        function populateDropdowns() { populateScaleDropdowns(); populateSoundSelect(); }
+        
+        function setupTetrachordControls() {
+            const lowerSelect = document.getElementById('lowerTetrachordSelect');
+            const upperSelect = document.getElementById('upperTetrachordSelect');
+            const middleStepDisplay = document.getElementById('middleStepDisplay');
+            const createBtn = document.getElementById('createScaleFromTetrachordsBtn');
+            const semistepsInput = document.getElementById('semistepsInput');
+
+            function populateTetrachordSelects() {
+                lowerSelect.innerHTML = '';
+                upperSelect.innerHTML = '';
+                TETRACHORDS.forEach(t => {
+                    const option = document.createElement('option');
+                    option.value = t.steps;
+                    option.textContent = t.name;
+                    lowerSelect.appendChild(option.cloneNode(true));
+                    upperSelect.appendChild(option);
+                });
+                // Set default to Ionian + Dorian
+                lowerSelect.value = "221";
+                upperSelect.value = "212";
+            }
+
+            function updateTetrachordScale() {
+                const lowerSteps = lowerSelect.value;
+                const upperSteps = upperSelect.value;
+                const lowerSum = lowerSteps.split('').reduce((sum, s) => sum + parseInt(s), 0);
+                const upperSum = upperSteps.split('').reduce((sum, s) => sum + parseInt(s), 0);
+                const middleStep = 12 - lowerSum - upperSum;
+                middleStepDisplay.textContent = middleStep >= 0 ? `+${middleStep}` : `${middleStep}`;
+                middleStepDisplay.style.color = (middleStep < 0) ? '#f44336' : '#8f8';
+            }
+            
+            populateTetrachordSelects();
+            updateTetrachordScale();
+            
+            lowerSelect.addEventListener('change', updateTetrachordScale);
+            upperSelect.addEventListener('change', updateTetrachordScale);
+            createBtn.addEventListener('click', () => {
+                const lowerSteps = lowerSelect.value;
+                const upperSteps = upperSelect.value;
+                const lowerSum = lowerSteps.split('').reduce((sum, s) => sum + parseInt(s), 0);
+                const upperSum = upperSteps.split('').reduce((sum, s) => sum + parseInt(s), 0);
+                const middleStep = 12 - lowerSum - upperSum;
+                if (middleStep < 0) {
+                    alert("Tetrachord combination is too long (sum of steps > 12). Cannot create scale.");
+                    return;
+                }
+                semistepsInput.value = `${lowerSteps}${middleStep}${upperSteps}`;
+                semistepsInput.dispatchEvent(new Event('input')); // Trigger update
+            });
+        }
+        
+        function setupControls() {
+            populateDropdowns();
+            setupTetrachordControls();
+            
+            const rootNoteSelect = document.getElementById('rootNoteSelect'); const scaleSelect = document.getElementById('scaleSelect'); const semistepsInput = document.getElementById('semistepsInput'); const randomRootBtn = document.getElementById('randomRootBtn'); const randomScaleBtn = document.getElementById('randomScaleBtn'); const autoPlayBtn = document.getElementById('autoPlayBtn');
+            const scaleSetToggleBtn = document.getElementById('scaleSetToggleBtn');
+            const toggle88KeysBtn = document.getElementById('toggle88KeysBtn');
+            const exportScalesBtn = document.getElementById('exportScalesBtn'); const importScalesBtn = document.getElementById('importScalesBtn'); const scalesFileInput = document.getElementById('scalesFileInput');
+            const exportSoundsBtn = document.getElementById('exportSoundsBtn'); const importSoundsBtn = document.getElementById('importSoundsBtn'); const soundsFileInput = document.getElementById('soundsFileInput');
+            const midiOutToggleBtn = document.getElementById('midiOutToggleBtn'); const midiOutSelect = document.getElementById('midiOutSelect');
+            const midiInToggleBtn = document.getElementById('midiInToggleBtn'); const midiInSelect = document.getElementById('midiInSelect');
+            const loadSampleBtn = document.getElementById('loadSampleBtn'); const sampleFileInput = document.getElementById('sampleFileInput');
+            const volumeSlider = document.getElementById('volumeSlider'); 
+            const tempoSlider = document.getElementById('tempoSlider');
+            const tempoInput = document.getElementById('tempoInput');
+
+            rootNoteSelect.addEventListener('change', applyScaleFilter);
+            scaleSelect.addEventListener('change', () => { semistepsInput.value = scaleSelect.value; applyScaleFilter(); });
+            semistepsInput.addEventListener('input', () => { const matchedScale = PREDEFINED_SCALES.find(s => s.steps === semistepsInput.value); if (matchedScale) { scaleSelect.value = matchedScale.steps; } else { for (let i = 0; i < scaleSelect.options.length; i++) { if (scaleSelect.options[i].text === "Custom") { scaleSelect.selectedIndex = i; break;}}} applyScaleFilter(); });
+            randomRootBtn.addEventListener('click', () => { rootNoteSelect.value = ALL_NOTES_CHROMATIC[Math.floor(Math.random() * ALL_NOTES_CHROMATIC.length)]; applyScaleFilter(); });
+            randomScaleBtn.addEventListener('click', () => { const actualScales = PREDEFINED_SCALES.filter(s => s.name !== "Custom" || s.steps !== ""); const randomIdx = Math.floor(Math.random() * actualScales.length); scaleSelect.value = actualScales[randomIdx].steps; semistepsInput.value = actualScales[randomIdx].steps; applyScaleFilter(); });
+            autoPlayBtn.addEventListener('click', toggleAutoPlay);
+            scaleSetToggleBtn.addEventListener('click', toggleScaleSet);
+            toggle88KeysBtn.addEventListener('click', toggle88Keys);
+            exportScalesBtn.addEventListener('click', exportScales); importScalesBtn.addEventListener('click', importScales); scalesFileInput.addEventListener('change', handleScaleFileImport);
+            exportSoundsBtn.addEventListener('click', exportSounds); importSoundsBtn.addEventListener('click', importSounds); soundsFileInput.addEventListener('change', handleSoundFileImport);
+            loadSampleBtn.addEventListener('click', loadSample); sampleFileInput.addEventListener('change', handleSampleFileImport);
+            midiOutToggleBtn.addEventListener('click', initMidiOut); midiOutSelect.addEventListener('change', (event) => { if (midiAccess && event.target.value) { currentMidiOutput = midiAccess.outputs.get(event.target.value); } else { currentMidiOutput = null; } });
+            midiInToggleBtn.addEventListener('click', initMidiIn); midiInSelect.addEventListener('change', (event) => setMidiInputDevice(event.target.value));
+            volumeSlider.addEventListener('input', (event) => { if (masterVolumeNode) masterVolumeNode.gain.value = parseFloat(event.target.value); });
+            
+            function syncTempo(sourceValue) {
+                const bpm = parseInt(sourceValue);
+                if (isNaN(bpm)) return;
+                tempoSlider.value = bpm;
+                tempoInput.value = bpm;
+                effectiveBaseTempoMs = 60000 / bpm;
+            }
+            tempoSlider.addEventListener('input', (event) => syncTempo(event.target.value));
+            tempoInput.addEventListener('input', (event) => syncTempo(event.target.value));
+            syncTempo(tempoSlider.value); // Set initial tempo
+        }
+
+        function handleKeyDown(e) {
+            if (e.repeat || document.activeElement.tagName === 'INPUT') return;
+            const noteName = KEYBOARD_MAP[e.key.toLowerCase()];
+            if (noteName && !activeComputerKeys.has(noteName)) {
+                const keyData = keysData.find(k => k.note === noteName);
+                if (keyData) {
+                    const keyElement = document.getElementById('key' + keyData.idSuffix);
+                    if (keyElement && !keyElement.classList.contains('key-disabled')) {
+                        if (!initAudioContext()) return;
+                        userHeldNotes.add(keyData.midi);
+                        updateChordDisplay();
+                        playNote(keyData.frequency, 1, keyData.midi, false);
+                        keyElement.classList.add('pressed');
+                        activeComputerKeys.add(noteName);
+                    }
+                }
+            }
+        }
+        function handleKeyUp(e) {
+            const noteName = KEYBOARD_MAP[e.key.toLowerCase()];
+            if (noteName) {
+                const keyData = keysData.find(k => k.note === noteName);
+                if (keyData) {
+                    userHeldNotes.delete(keyData.midi);
+                    updateChordDisplay();
+                    const keyElement = document.getElementById('key' + keyData.idSuffix);
+                    if (keyElement) keyElement.classList.remove('pressed');
+                }
+                activeComputerKeys.delete(noteName);
+            }
+        }
+
+        let audioUnlocked = false; function unlockAudioEvent() { if (!audioUnlocked) { if (initAudioContext()) { document.body.removeEventListener('click', unlockAudioEvent, true); document.body.removeEventListener('touchstart', unlockAudioEvent, true); document.body.removeEventListener('keydown', unlockAudioEvent, true); console.log("AudioContext active."); audioUnlocked = true; } } }
+        document.body.addEventListener('click', unlockAudioEvent, true); document.body.addEventListener('touchstart', unlockAudioEvent, true); document.body.addEventListener('keydown', unlockAudioEvent, true);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            generateKeysData(); // Generate initial 3-octave keys
+            createPianoKeys(); 
+            setupControls(); 
+            applyScaleFilter(); 
+            const zoomSlider = document.getElementById('zoomSlider');
+            zoomSlider.addEventListener('input', (event) => { updatePianoLayout(parseFloat(event.target.value)); });
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+        });
+    </script>
+</body>
+</html>
