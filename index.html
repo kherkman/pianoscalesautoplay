@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Full Generative Piano Suite</title>
     <style>
-        /* ... (CSS) ... */
+        /* ... (CSS is the same as your previous version, with minor additions) ... */
         :root {
             --white-key-width: 60px;
             --white-key-height: 220px;
@@ -270,7 +270,7 @@
             <label>Scales IO:</label> 
             <div>
                 <button id="exportScalesBtn">Export</button>
-                <button id="importScalesBtn">Import</button>
+          <!--      <button id="importScalesBtn">Import</button> -->
                 <input type="file" id="scalesFileInput" accept=".json" style="display: none;">
             </div>
         </div>
@@ -284,11 +284,11 @@
         </div>
         <div class="control-group">
             <label>Sounds IO:</label> 
-            <div>
+       <!--     <div>
                 <button id="exportSoundsBtn">Export</button>
                 <button id="importSoundsBtn">Import</button>
                 <input type="file" id="soundsFileInput" accept=".json" style="display: none;">
-            </div>
+            </div>. -->
         </div>
         <div class="control-group">
             <label for="midiOutSelect">MIDI Out:</label> 
@@ -319,14 +319,14 @@
                 <!-- Options will be populated by JavaScript -->
             </select>
         </div>
-        <div class="control-group"> 
+     <!--   <div class="control-group"> 
             <label>Sampler:</label>
             <div>
                 <button id="loadSampleBtn">Load C4 Sample</button>
                 <input type="file" id="sampleFileInput" accept="audio/*" style="display: none;">
             </div>
         </div>
-    </div>
+    </div>. -->
 
     <div class="tetrachord-maker-container master-controls-container">
         <h3>Make a Scale from Tetrachords</h3>
@@ -752,32 +752,32 @@
         
         // --- Export/Import & Sampler ---
         function exportScales() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(PREDEFINED_SCALES, null, 2)); const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr); downloadAnchorNode.setAttribute("download", "custom_piano_scales.json"); document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove(); }
-        function importScales() { document.getElementById('scalesFileInput').click(); }
+   //     function importScales() { document.getElementById('scalesFileInput').click(); }
         function handleScaleFileImport(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const importedScales = JSON.parse(e.target.result); if (Array.isArray(importedScales) && importedScales.every(s => s && typeof s.name === 'string' && typeof s.steps === 'string')) { PREDEFINED_SCALES = importedScales; populateScaleDropdowns(); const scaleSelect = document.getElementById('scaleSelect'); if (scaleSelect.options.length > 0) { scaleSelect.selectedIndex = 0; document.getElementById('semistepsInput').value = scaleSelect.value; } applyScaleFilter(); alert("Scales imported successfully!"); } else { alert("Invalid scale file format."); } } catch (error) { console.error("Error parsing scale file:", error); alert("Error parsing scale file: " + error.message); } }; reader.readAsText(file); event.target.value = null; }
         function exportSounds() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(PREDEFINED_SOUNDS, null, 2)); const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr); downloadAnchorNode.setAttribute("download", "custom_piano_sounds.json"); document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove(); }
-        function importSounds() { document.getElementById('soundsFileInput').click(); }
+   //     function importSounds() { document.getElementById('soundsFileInput').click(); }
         function handleSoundFileImport(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const importedSounds = JSON.parse(e.target.result); if (Array.isArray(importedSounds) && importedSounds.every(s => s && s.id && s.name && s.params)) { PREDEFINED_SOUNDS = importedSounds; populateSoundSelect(); alert("Sounds imported successfully!"); } else { alert("Invalid sound file format. Ensure it's an array of sound objects with id, name, and params properties."); } } catch (error) { console.error("Error parsing sound file:", error); alert("Error parsing sound file: " + error.message); } }; reader.readAsText(file); event.target.value = null; }
-        function loadSample() { document.getElementById('sampleFileInput').click(); }
-        function handleSampleFileImport(event) {
-            const file = event.target.files[0]; if (!file) return;
-            if (!initAudioContext()) { alert("Audio context must be initialized first. Please click the piano."); return; }
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                audioContext.decodeAudioData(e.target.result,
-                    (buffer) => {
-                        samplerAudioBuffer = buffer;
-                        updateSamplerOptionInSelect(true); // Add and select the sampler option
-                        alert('Sample loaded successfully! "Sampler" sound type is now available and selected.');
-                    },
-                    (error) => {
-                        console.error("Error decoding audio data:", error);
-                        alert("Error decoding audio file: " + error.message);
-                    }
-                );
-            };
-            reader.readAsArrayBuffer(file);
-            event.target.value = null;
-        }
+   //     function loadSample() { document.getElementById('sampleFileInput').click(); }
+   //     function handleSampleFileImport(event) {
+   //         const file = event.target.files[0]; if (!file) return;
+   //         if (!initAudioContext()) { alert("Audio context must be initialized first. Please click the piano."); return; }
+   //         const reader = new FileReader();
+   //         reader.onload = function(e) {
+   //             audioContext.decodeAudioData(e.target.result,
+   //                 (buffer) => {
+   //                     samplerAudioBuffer = buffer;
+    //                    updateSamplerOptionInSelect(true); // Add and select the sampler option
+     //                   alert('Sample loaded successfully! "Sampler" sound type is now available and selected.');
+     //               },
+     //               (error) => {
+     //                   console.error("Error decoding audio data:", error);
+      //                  alert("Error decoding audio file: " + error.message);
+      //              }
+      //          );
+      //      };
+      //      reader.readAsArrayBuffer(file);
+      //      event.target.value = null;
+      //  }
 
         // --- Setup & Event Listeners ---
         function populateScaleDropdowns() { const rootNoteSelect = document.getElementById('rootNoteSelect'); const currentRoot = rootNoteSelect.value; rootNoteSelect.innerHTML = ''; ALL_NOTES_CHROMATIC.forEach(note => { const option = document.createElement('option'); option.value = note; option.textContent = note; rootNoteSelect.appendChild(option); }); rootNoteSelect.value = ALL_NOTES_CHROMATIC.includes(currentRoot) ? currentRoot : "C"; const scaleSelect = document.getElementById('scaleSelect'); const currentScaleSteps = scaleSelect.value; scaleSelect.innerHTML = ''; PREDEFINED_SCALES.forEach(scale => { const option = document.createElement('option'); option.value = scale.steps; option.textContent = scale.name; scaleSelect.appendChild(option); }); let foundSelected = false; const ionianIndex = PREDEFINED_SCALES.findIndex(s => s.name === "Ionian (Major)" || s.name === "Ionian"); for(let i=0; i < scaleSelect.options.length; i++){ if(scaleSelect.options[i].value === currentScaleSteps){ scaleSelect.selectedIndex = i; foundSelected = true; break; } } if(!foundSelected && scaleSelect.options.length > 0){ scaleSelect.selectedIndex = ionianIndex !== -1 ? ionianIndex : 0; } if(scaleSelect.value) document.getElementById('semistepsInput').value = scaleSelect.value; else if (scaleSelect.options.length > 0) document.getElementById('semistepsInput').value = scaleSelect.options[0].value; }
@@ -897,11 +897,11 @@
             const rootNoteSelect = document.getElementById('rootNoteSelect'); const scaleSelect = document.getElementById('scaleSelect'); const semistepsInput = document.getElementById('semistepsInput'); const randomRootBtn = document.getElementById('randomRootBtn'); const randomScaleBtn = document.getElementById('randomScaleBtn'); const autoPlayBtn = document.getElementById('autoPlayBtn');
             const scaleSetToggleBtn = document.getElementById('scaleSetToggleBtn');
             const toggle88KeysBtn = document.getElementById('toggle88KeysBtn');
-            const exportScalesBtn = document.getElementById('exportScalesBtn'); // const importScalesBtn = document.getElementById('importScalesBtn'); const scalesFileInput = document.getElementById('scalesFileInput');
-      //      const exportSoundsBtn = document.getElementById('exportSoundsBtn'); const importSoundsBtn = document.getElementById('importSoundsBtn'); const soundsFileInput = document.getElementById('soundsFileInput');
+            const exportScalesBtn = document.getElementById('exportScalesBtn'); const importScalesBtn = document.getElementById('importScalesBtn'); const scalesFileInput = document.getElementById('scalesFileInput');
+            const exportSoundsBtn = document.getElementById('exportSoundsBtn'); const importSoundsBtn = document.getElementById('importSoundsBtn'); const soundsFileInput = document.getElementById('soundsFileInput');
             const midiOutToggleBtn = document.getElementById('midiOutToggleBtn'); const midiOutSelect = document.getElementById('midiOutSelect');
             const midiInToggleBtn = document.getElementById('midiInToggleBtn'); const midiInSelect = document.getElementById('midiInSelect');
-      //      const loadSampleBtn = document.getElementById('loadSampleBtn'); const sampleFileInput = document.getElementById('sampleFileInput');
+            const loadSampleBtn = document.getElementById('loadSampleBtn'); const sampleFileInput = document.getElementById('sampleFileInput');
             const volumeSlider = document.getElementById('volumeSlider'); 
             const tempoSlider = document.getElementById('tempoSlider');
             const tempoInput = document.getElementById('tempoInput');
