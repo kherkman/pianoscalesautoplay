@@ -160,7 +160,10 @@
         #midiOutToggleBtn.active, 
         #midiInToggleBtn.active,
         #reverbToggleBtn.active,
-        #delayToggleBtn.active { 
+        #delayToggleBtn.active,
+        #songMakerPlayBtn.playing,
+        #songMakerRepeatBtn.active,
+        .humanizer-toggle-btn.active { 
             background-color: #f44336; 
             color: white;
         }
@@ -168,7 +171,10 @@
         #midiOutToggleBtn.active:hover, 
         #midiInToggleBtn.active:hover,
         #reverbToggleBtn.active:hover,
-        #delayToggleBtn.active:hover {
+        #delayToggleBtn.active:hover,
+        #songMakerPlayBtn.playing:hover,
+        #songMakerRepeatBtn.active:hover,
+        .humanizer-toggle-btn.active:hover {
             background-color: #d32f2f;
         }
 
@@ -320,6 +326,41 @@
             display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 10px;
         }
 
+        .song-maker-content {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .song-maker-master-controls {
+            display: flex; flex-wrap: wrap; gap: 15px; align-items: center;
+            border-bottom: 1px solid var(--control-border); padding-bottom: 15px;
+        }
+        .song-maker-tracks-container {
+            display: flex; flex-direction: column; gap: 15px; max-height: 400px; overflow-y: auto; padding-right: 5px;
+        }
+        .song-maker-track {
+            background-color: #333; border: 1px solid var(--control-border); border-radius: 6px; padding: 10px;
+        }
+        .song-maker-track-header {
+            display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px;
+        }
+        .song-maker-track-header .track-title {
+            font-weight: bold; color: var(--text-color); margin-right: auto;
+        }
+        .song-maker-track .track-button { font-size: 0.8em; padding: 4px 8px; }
+        .song-maker-track .track-button.solo.active { background-color: #ff9800; }
+        .song-maker-track .track-button.mute.active { background-color: #795548; }
+        .song-maker-track .track-velocity-slider { width: 80px; }
+        .song-maker-track .track-inputs { display: flex; flex-direction: column; gap: 8px; }
+        .song-maker-track .track-inputs input { width: 95%; }
+
+        .humanizer-controls {
+            display: none; flex-wrap: wrap; gap: 10px; align-items: center;
+            background-color: #3a3a3a; padding: 8px; border-radius: 5px; margin-top: 5px;
+        }
+        .humanizer-controls.visible { display: flex; }
+        #humanizerTimingSlider, #humanizerVelocitySlider { width: 100px; }
+
         .info { margin-top: 20px; font-size: 0.9em; color: var(--subtle-text); text-align: center; }
     </style>
 </head>
@@ -395,6 +436,52 @@
             </div>
         </div>
         
+        <div class="draggable-section" data-section-id="songmaker">
+            <div class="section-header" draggable="true">
+                <h3>Song Maker</h3>
+                <button class="toggle-btn">-</button>
+            </div>
+            <div class="section-content song-maker-content">
+                <div class="song-maker-master-controls">
+                    <button id="songMakerPlayBtn" class="chord-button" style="background-color: #3f51b5;">Play Song</button>
+                    <button id="songMakerRepeatBtn">Repeat Off</button>
+                    <div class="control-group control-group-horizontal">
+                        <label for="songMakerTrackCount">Tracks:</label>
+                        <input type="number" id="songMakerTrackCount" value="2" min="1" max="16" style="width: 50px;">
+                    </div>
+                     <div class="control-group">
+                        <button id="humanizerToggleBtn" class="humanizer-toggle-btn">Humanizer</button>
+                        <div id="humanizerControls" class="humanizer-controls">
+                            <label for="humanizerTimingSlider" title="Max random timing shift as % of beat">Timing:</label>
+                            <input type="range" id="humanizerTimingSlider" min="0" max="50" step="1" value="10" class="effect-slider">
+                            <label for="humanizerVelocitySlider" title="Max random velocity variation (±)">Velocity:</label>
+                            <input type="range" id="humanizerVelocitySlider" min="0" max="50" step="1" value="15" class="effect-slider">
+                        </div>
+                    </div>
+                    <div class="control-group">
+                         <label>File:</label>
+                         <div>
+                            <button id="saveSongBtn">Save</button>
+                            <button id="loadSongBtn">Load</button>
+                            <input type="file" id="songFileInput" accept=".json" style="display: none;">
+                        </div>
+                    </div>
+                     <div class="control-group">
+                        <label>MIDI:</label>
+                        <button id="saveMidiBtn">Save .mid</button>
+                    </div>
+                </div>
+
+                <div id="songMakerTracksContainer" class="song-maker-tracks-container">
+                    <!-- Tracks will be dynamically inserted here -->
+                </div>
+                
+                <p class="info" style="text-align: left; font-size: 0.8em; margin-top: 15px; max-width: 100%;">
+                    <strong>Instructions:</strong> Use '0' for a pause, '-' to hold the previous note.
+                </p>
+            </div>
+        </div>
+
     </div>
 
     <p class="info">
@@ -495,9 +582,11 @@
         function initialScroll() { const pianoContainer = document.getElementById('pianoContainer'); const whiteKeyWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--white-key-width')); let c4WhiteKeyIndex = -1; let currentWhiteKeyIdx = 0; for(let i=0; i < keysData.length; i++) { if (keysData[i].type === 'white') { if (keysData[i].note === "C4") { c4WhiteKeyIndex = currentWhiteKeyIdx; break; } currentWhiteKeyIdx++; } } if (c4WhiteKeyIndex !== -1) { const scrollPosition = (c4WhiteKeyIndex * whiteKeyWidth) - (pianoContainer.clientWidth / 2) + (whiteKeyWidth / 2); pianoContainer.scrollLeft = Math.max(0, scrollPosition); } else { pianoContainer.scrollLeft = 0; } }
 
         // --- SCALE, CHORD, AUTO-PLAY (Core Logic) ---
-        function getFullScaleRange(rootPitchClass, semistepPattern) { const allScaleNotes = []; const rootIdx = ALL_NOTES_CHROMATIC.indexOf(rootPitchClass); if (rootIdx === -1) return []; const steps = semistepPattern.split('').map(s => parseInt(s, 10)).filter(n => !isNaN(n) && n > 0); if (steps.length === 0) return []; for (let oct = 2; oct <= 6; oct++) { let totalSemitonesFromOctaveRoot = 0; const rootNoteNameCandidate = ALL_NOTES_CHROMATIC[rootIdx] + oct; const rootKeyData = keysData.find(k => k.note === rootNoteNameCandidate); if (rootKeyData) { allScaleNotes.push({ ...rootKeyData, semitonesFromScaleRoot: 0 % 12, interval: INTERVAL_NAMES_BY_SEMITONE[0] }); } steps.forEach(step => { totalSemitonesFromOctaveRoot += step; let nextNoteAbsIndexChromatic = rootIdx + totalSemitonesFromOctaveRoot; let nextOctaveCandidate = oct + Math.floor(nextNoteAbsIndexChromatic / 12); let nextPitchClassIndexInChromatic = nextNoteAbsIndexChromatic % 12; const noteNameCandidate = ALL_NOTES_CHROMATIC[nextPitchClassIndexInChromatic] + nextOctaveCandidate; const keyDataInstance = keysData.find(k => k.note === noteNameCandidate); if (keyDataInstance) { allScaleNotes.push({ ...keyDataInstance, semitonesFromScaleRoot: totalSemitonesFromOctaveRoot % 12, interval: INTERVAL_NAMES_BY_SEMITONE[totalSemitonesFromOctaveRoot % 12] || `+${totalSemitonesFromOctaveRoot % 12}` }); } }); } const uniqueNotes = Array.from(new Map(allScaleNotes.map(item => [item.note, item])).values()); return uniqueNotes.sort((a,b) => a.frequency - b.frequency); }
+        function getFullScaleRange(rootPitchClass, semistepPattern) { const allScaleNotes = []; const rootIdx = ALL_NOTES_CHROMATIC.indexOf(rootPitchClass); if (rootIdx === -1) return []; const steps = semistepPattern.split('').map(s => parseInt(s, 10)).filter(n => !isNaN(n) && n > 0); if (steps.length === 0) return []; for (let oct = 0; oct < 9; oct++) { let totalSemitonesFromOctaveRoot = 0; const rootNoteNameCandidate = ALL_NOTES_CHROMATIC[rootIdx] + oct; const rootKeyData = keysData.find(k => k.note === rootNoteNameCandidate); if (rootKeyData) { allScaleNotes.push({ ...rootKeyData, semitonesFromScaleRoot: 0 % 12, interval: INTERVAL_NAMES_BY_SEMITONE[0] }); } steps.forEach(step => { totalSemitonesFromOctaveRoot += step; let nextNoteAbsIndexChromatic = rootIdx + totalSemitonesFromOctaveRoot; let nextOctaveCandidate = oct + Math.floor(nextNoteAbsIndexChromatic / 12); let nextPitchClassIndexInChromatic = nextNoteAbsIndexChromatic % 12; const noteNameCandidate = ALL_NOTES_CHROMATIC[nextPitchClassIndexInChromatic] + nextOctaveCandidate; const keyDataInstance = keysData.find(k => k.note === noteNameCandidate); if (keyDataInstance) { allScaleNotes.push({ ...keyDataInstance, semitonesFromScaleRoot: totalSemitonesFromOctaveRoot % 12, interval: INTERVAL_NAMES_BY_SEMITONE[totalSemitonesFromOctaveRoot % 12] || `+${totalSemitonesFromOctaveRoot % 12}` }); } }); } const uniqueNotes = Array.from(new Map(allScaleNotes.map(item => [item.note, item])).values()); return uniqueNotes.sort((a,b) => a.frequency - b.frequency); }
         function getScaleNotesWithOctaves(rootPitchClass, semistepPattern, startOctave = 4) { const scaleNotes = []; const rootIndex = ALL_NOTES_CHROMATIC.indexOf(rootPitchClass); if (rootIndex === -1) return { notesWithIntervals: [], fullNoteNames: [], notesForPlayback: [] }; let currentOctave = startOctave; const steps = semistepPattern.split('').map(s => parseInt(s, 10)).filter(n => !isNaN(n) && n > 0); let totalSemitonesFromRoot = 0; let firstNoteName = ALL_NOTES_CHROMATIC[rootIndex] + currentOctave; while(!keysData.find(k => k.note === firstNoteName) && currentOctave <= 5) { currentOctave++; firstNoteName = ALL_NOTES_CHROMATIC[rootIndex] + currentOctave; } while(!keysData.find(k => k.note === firstNoteName) && currentOctave >= 3) { currentOctave--; firstNoteName = ALL_NOTES_CHROMATIC[rootIndex] + currentOctave; } const firstNoteKeyData = keysData.find(k => k.note === firstNoteName); if (firstNoteKeyData) scaleNotes.push({ ...firstNoteKeyData, interval: INTERVAL_NAMES_BY_SEMITONE[0], semitonesFromRoot: 0 }); steps.forEach(step => { totalSemitonesFromRoot += step; let nextNoteAbsIndexChromatic = rootIndex + totalSemitonesFromRoot; let nextOctave = currentOctave + Math.floor(nextNoteAbsIndexChromatic / 12); let nextPitchClassIndexInChromatic = nextNoteAbsIndexChromatic % 12; const noteName = ALL_NOTES_CHROMATIC[nextPitchClassIndexInChromatic] + nextOctave; const keyDataInstance = keysData.find(k => k.note === noteName); if (keyDataInstance) scaleNotes.push({ ...keyDataInstance, interval: INTERVAL_NAMES_BY_SEMITONE[totalSemitonesFromRoot % 12] || `+${totalSemitonesFromRoot % 12}`, semitonesFromRoot: totalSemitonesFromRoot }); }); const notesInOneOctave = scaleNotes.slice(0, steps.length + 1).filter(n => n.frequency); return { notesWithIntervals: notesInOneOctave, fullNoteNames: notesInOneOctave.map(n => n.note), notesForPlayback: notesInOneOctave.map(n => ({note: n.note, frequency: n.frequency, pitchClass: n.pitchClass, octave: n.octave, midi: n.midi})) }; }
         function getDiatonicTriads(rootPitchClass, semistepPattern) { const { notesWithIntervals: scaleInfo } = getScaleNotesWithOctaves(rootPitchClass, semistepPattern, 4); if (scaleInfo.length < 3) return []; const triads = []; const scaleLength = scaleInfo.length -1; for (let i = 0; i < scaleLength; i++) { const n1 = scaleInfo[i]; const n3 = scaleInfo[(i + 2) % scaleLength]; const n5 = scaleInfo[(i + 4) % scaleLength]; let actualChordNotes = [n1.note]; let tempNote = n1; let thirdInfo = keysData.find(kd => kd.pitchClass === n3.pitchClass && kd.octave >= tempNote.octave && kd.frequency > tempNote.frequency); if(!thirdInfo) thirdInfo = keysData.find(kd => kd.pitchClass === n3.pitchClass && kd.octave === tempNote.octave + 1); if(thirdInfo && thirdInfo.frequency) actualChordNotes.push(thirdInfo.note); else continue; tempNote = thirdInfo; let fifthInfo = keysData.find(kd => kd.pitchClass === n5.pitchClass && kd.octave >= tempNote.octave && kd.frequency > tempNote.frequency); if(!fifthInfo) fifthInfo = keysData.find(kd => kd.pitchClass === n5.pitchClass && kd.octave === tempNote.octave + 1); if(fifthInfo && fifthInfo.frequency) actualChordNotes.push(fifthInfo.note); else continue; const semitonesToThird = (ALL_NOTES_CHROMATIC.indexOf(n3.pitchClass) - ALL_NOTES_CHROMATIC.indexOf(n1.pitchClass) + 12) % 12; const semitonesToFifth = (ALL_NOTES_CHROMATIC.indexOf(n5.pitchClass) - ALL_NOTES_CHROMATIC.indexOf(n1.pitchClass) + 12) % 12; let type = "", labelSuffix = ""; if (semitonesToThird === 4 && semitonesToFifth === 7) { type = "Major"; labelSuffix = "maj"; } else if (semitonesToThird === 3 && semitonesToFifth === 7) { type = "minor"; labelSuffix = "m"; } else if (semitonesToThird === 3 && semitonesToFifth === 6) { type = "diminished"; labelSuffix = "dim"; } else if (semitonesToThird === 4 && semitonesToFifth === 8) { type = "Augmented"; labelSuffix = "aug"; } else continue; triads.push({ rootNoteName: n1.note, type: type, notes: actualChordNotes, label: `${n1.pitchClass}${labelSuffix}` }); } return triads; }
+        
+        // --- Generative Auto-Play ---
         let autoPlayTimeoutId = null; let originalGeneratedMelody = []; let currentMelody = []; let currentMelodyNoteIndex = 0; let currentMelodyRepetitionCount = 0; let currentTranspositionCycleIndex = 0; let isAutoPlaying = false; let lastAutoPlayedChordKeyElements = []; let autoPlaySettings = { originalRootPitchClass: '', originalScalePattern: '', isMonorhythmic: false, currentMelodyLength: 8, currentTempoMs: 750, isPlayingArpeggio: false, isPlayingRepeatingChords: false, currentSongSection: 'A', currentSongSectionIndex: 0, repeatingBassPattern: [], currentRepeatingBassIndex: 0, chordToneMelodyChordProgression: [] , currentChordInProgressionIndex: 0 }; const SONG_STRUCTURE = ['A', 'B', 'A', 'C', 'B']; let fixedOriginalScalePalette = []; let isPlayingScaleRun = false; let currentArpeggioBassNote = null; 
         function generateRandomMelody(scalePaletteForGeneration, initialMelodyRootPitchClass, isMonorhythmic, melodyLength) { if (!scalePaletteForGeneration || scalePaletteForGeneration.length === 0) return []; const melody = []; let previousNote = null; let firstNoteForMelody = null; const targetOctaves = [4, 3, 5]; for (const oct of targetOctaves) { const rootNoteName = initialMelodyRootPitchClass + oct; firstNoteForMelody = scalePaletteForGeneration.find(n => n.note === rootNoteName); if (firstNoteForMelody) break; } if (!firstNoteForMelody) firstNoteForMelody = scalePaletteForGeneration.find(n => n.pitchClass === initialMelodyRootPitchClass) || scalePaletteForGeneration[0]; if (!firstNoteForMelody) return []; previousNote = firstNoteForMelody; let currentRhythmPatternSource = RHYTHM_PATTERNS.standard; if (!isMonorhythmic && Math.random() < RHYTHM_STYLE_PROBABILITY) { const styleKeys = Object.keys(RHYTHM_PATTERNS); currentRhythmPatternSource = RHYTHM_PATTERNS[styleKeys[Math.floor(Math.random() * styleKeys.length)]]; } melody.push({ ...previousNote, durationFactor: isMonorhythmic ? 1 : currentRhythmPatternSource[Math.floor(Math.random() * currentRhythmPatternSource.length)] }); for (let i = 1; i < melodyLength; i++) { let candidates = []; if (i === 1) { const rootOfMelody = melody[0]; const targetIntervalsSemitones = [3, 4, 7, -3, -4, -7]; const preferredCandidates = []; targetIntervalsSemitones.forEach(interval => { const targetMidi = rootOfMelody.midi + interval; const targetNote = scalePaletteForGeneration.find(n => n.midi === targetMidi); if (targetNote) preferredCandidates.push(targetNote); }); if (preferredCandidates.length > 0) candidates = preferredCandidates; } if (candidates.length === 0) { const upwardCandidates = []; const downwardCandidates = []; scalePaletteForGeneration.forEach(candidateNote => { if (candidateNote.note === previousNote.note) return; const semitoneDiff = candidateNote.midi - previousNote.midi; if (Math.abs(semitoneDiff) >= MIN_MELODIC_INTERVAL) { if (semitoneDiff > 0) upwardCandidates.push(candidateNote); else downwardCandidates.push(candidateNote); } }); const preferUp = Math.random() < 0.5; if (preferUp && upwardCandidates.length > 0) candidates = upwardCandidates; else if (downwardCandidates.length > 0) candidates = downwardCandidates; else if (upwardCandidates.length > 0) candidates = upwardCandidates; else candidates = scalePaletteForGeneration.filter(n => n.note !== previousNote.note); } let nextNoteInfo; if (candidates.length > 0) { nextNoteInfo = candidates[Math.floor(Math.random() * candidates.length)]; } else if (melody.length > 0) { nextNoteInfo = melody[0]; } else { break; } previousNote = nextNoteInfo; melody.push({ ...nextNoteInfo, durationFactor: isMonorhythmic ? 1 : currentRhythmPatternSource[Math.floor(Math.random() * currentRhythmPatternSource.length)] }); if (i < melodyLength -1 && Math.random() < NOTE_REPETITION_PROBABILITY) { const numRepetitions = Math.floor(Math.random() * MAX_NOTE_REPETITIONS) + 1; for (let r = 0; r < numRepetitions && i < melodyLength -1; r++) { melody.push({ ...previousNote, durationFactor: isMonorhythmic ? 1 : currentRhythmPatternSource[Math.floor(Math.random() * currentRhythmPatternSource.length)] }); i++; } } } return melody; }
         function generateArpeggioMelody(scalePaletteForGeneration, initialMelodyRootPitchClass, melodyLength) { if (!scalePaletteForGeneration || scalePaletteForGeneration.length === 0) return []; const arpeggio = []; let firstNoteForArpeggio = null; const targetOctaves = [4, 3, 5]; for (const oct of targetOctaves) { const rootNoteName = initialMelodyRootPitchClass + oct; firstNoteForArpeggio = scalePaletteForGeneration.find(n => n.note === rootNoteName); if (firstNoteForArpeggio) break; } if (!firstNoteForArpeggio) firstNoteForArpeggio = scalePaletteForGeneration.find(n => n.pitchClass === initialMelodyRootPitchClass) || scalePaletteForGeneration[0]; if (!firstNoteForArpeggio) return []; const arpTypePattern = ARPEGGIO_TYPES[Math.floor(Math.random() * ARPEGGIO_TYPES.length)]; const isAscending = Math.random() < 0.5; let currentRootNoteInArpCycle = firstNoteForArpeggio; let currentArpNoteIndexInPattern = 0; for (let i = 0; i < melodyLength; i++) { const scaleDegreeOffset = arpTypePattern[currentArpNoteIndexInPattern]; let rootPaletteIndexOfCurrentCycle = scalePaletteForGeneration.findIndex(n => n.midi === currentRootNoteInArpCycle.midi); if (rootPaletteIndexOfCurrentCycle === -1) rootPaletteIndexOfCurrentCycle = 0; let targetNoteIndexInPalette; targetNoteIndexInPalette = rootPaletteIndexOfCurrentCycle + scaleDegreeOffset; targetNoteIndexInPalette = Math.max(0, Math.min(scalePaletteForGeneration.length - 1, targetNoteIndexInPalette)); const noteForArpeggio = scalePaletteForGeneration[targetNoteIndexInPalette]; if (noteForArpeggio) { let durationFactor = ARPEGGIO_NOTE_DURATION_FACTOR; arpeggio.push({ ...noteForArpeggio, durationFactor: durationFactor }); currentArpNoteIndexInPattern = (currentArpNoteIndexInPattern + 1) % arpTypePattern.length; if (currentArpNoteIndexInPattern === 0) { const nextOctaveRootMidi = currentRootNoteInArpCycle.midi + (isAscending ? 12 : -12); const nextOctaveRoot = scalePaletteForGeneration.find(n => n.midi === nextOctaveRootMidi); currentRootNoteInArpCycle = nextOctaveRoot || currentRootNoteInArpCycle; } } else { break; } } if (!isAscending && arpeggio.length > 1 && Math.random() < 0.7) { return arpeggio.reverse(); } return arpeggio; }
@@ -507,11 +596,186 @@
         function transposeAndSnapMelodyToPalette(baseMelody, semitonesToTranspose, targetScalePalette) { const transposedAndSnapped = []; if (!targetScalePalette || targetScalePalette.length === 0) return baseMelody; for (const originalMelodyNote of baseMelody) { if (Array.isArray(originalMelodyNote.notes)) { const snappedChordNotes = []; let allNotesSnapped = true; for (const chordSubNote of originalMelodyNote.notes) { const targetMidi = chordSubNote.midi + semitonesToTranspose; let closestNoteInPalette = targetScalePalette[0]; let minDiff = Math.abs(targetMidi - closestNoteInPalette.midi); for (let k = 1; k < targetScalePalette.length; k++) { const diff = Math.abs(targetMidi - targetScalePalette[k].midi); if (diff < minDiff) { minDiff = diff; closestNoteInPalette = targetScalePalette[k]; } } if(closestNoteInPalette) snappedChordNotes.push(closestNoteInPalette); else allNotesSnapped = false; } if(allNotesSnapped && snappedChordNotes.length > 0) { transposedAndSnapped.push({ notes: snappedChordNotes, durationFactor: originalMelodyNote.durationFactor, conceptualRoot: snappedChordNotes[0] }); } else { transposedAndSnapped.push({...originalMelodyNote}); } } else { const targetMidi = originalMelodyNote.midi + semitonesToTranspose; let closestNoteInPalette = targetScalePalette[0]; let minDiff = Math.abs(targetMidi - closestNoteInPalette.midi); for (let k = 1; k < targetScalePalette.length; k++) { const diff = Math.abs(targetMidi - targetScalePalette[k].midi); if (diff < minDiff) { minDiff = diff; closestNoteInPalette = targetScalePalette[k]; } } transposedAndSnapped.push({ ...closestNoteInPalette, durationFactor: originalMelodyNote.durationFactor }); } } return transposedAndSnapped.length > 0 ? transposedAndSnapped : baseMelody; }
         function generateScaleRun() { if(fixedOriginalScalePalette.length === 0) return []; const oneOctaveScale = []; let preferredStart = fixedOriginalScalePalette.find(n => n.octave === 4 && n.pitchClass === autoPlaySettings.originalRootPitchClass) || fixedOriginalScalePalette.find(n => n.octave === 3 && n.pitchClass === autoPlaySettings.originalRootPitchClass) || fixedOriginalScalePalette.find(n => n.pitchClass === autoPlaySettings.originalRootPitchClass) || fixedOriginalScalePalette[0]; let startIndex = fixedOriginalScalePalette.indexOf(preferredStart); if(startIndex === -1) startIndex = 0; const scalePatternLength = autoPlaySettings.originalScalePattern.split('').length; for (let i = 0; i <= scalePatternLength; i++) { const noteIndex = startIndex + i; if (noteIndex < fixedOriginalScalePalette.length) { oneOctaveScale.push({ ...fixedOriginalScalePalette[noteIndex], durationFactor: SCALE_RUN_NOTE_DURATION_FACTOR }); } else break; } if (Math.random() < 0.5 && oneOctaveScale.length > 1) return oneOctaveScale.reverse(); return oneOctaveScale; }
         function playNextMelodyNote() { if (!isAutoPlaying) { stopAutoPlay(true); return; } const playingNotesDisplay = document.getElementById('currentlyPlayingNotesDisplay'); if(playingNotesDisplay) playingNotesDisplay.innerHTML = ''; lastAutoPlayedChordKeyElements.forEach(el => el.classList.remove('auto-playing-note')); lastAutoPlayedChordKeyElements = []; if (currentMelody.length === 0) { console.warn("Current melody empty."); stopAutoPlay(); return; } const currentBeatData = currentMelody[currentMelodyNoteIndex]; let mainNoteForBeatLogic, durationFactorForBeat; if (autoPlaySettings.isPlayingRepeatingChords && Array.isArray(currentBeatData.notes)) { mainNoteForBeatLogic = currentBeatData.conceptualRoot || currentBeatData.notes[0]; durationFactorForBeat = currentBeatData.durationFactor; } else { mainNoteForBeatLogic = currentBeatData; durationFactorForBeat = currentBeatData.durationFactor; } if (!mainNoteForBeatLogic || !mainNoteForBeatLogic.frequency) { console.warn("Invalid main note for beat logic, skipping.", mainNoteForBeatLogic); currentMelodyNoteIndex = (currentMelodyNoteIndex + 1) % currentMelody.length; if (currentMelodyNoteIndex === 0) currentMelodyRepetitionCount++; autoPlayTimeoutId = setTimeout(playNextMelodyNote, autoPlaySettings.currentTempoMs); return; } const notesToPlayOnThisBeat = []; if (autoPlaySettings.isPlayingRepeatingChords && Array.isArray(currentBeatData.notes)) { currentBeatData.notes.forEach(note => { notesToPlayOnThisBeat.push({ noteData: note, gain: CHORD_VOICING_GAIN_SCALE }); }); } else { notesToPlayOnThisBeat.push({ noteData: mainNoteForBeatLogic, gain: 1 }); } if (!isPlayingScaleRun) { let bassRootForCurrentBeat = mainNoteForBeatLogic; if (autoPlaySettings.isPlayingRepeatingChords && currentBeatData.conceptualRoot) { bassRootForCurrentBeat = currentBeatData.conceptualRoot; } else if (autoPlaySettings.repeatingBassPattern.length > 0 && autoPlaySettings.currentSongSection === 'B' && !autoPlaySettings.isPlayingArpeggio) { bassRootForCurrentBeat = autoPlaySettings.repeatingBassPattern[autoPlaySettings.currentRepeatingBassIndex]; } else if (autoPlaySettings.currentSongSection === 'C' && autoPlaySettings.chordToneMelodyChordProgression.length > 0) { const currentChordForBass = autoPlaySettings.chordToneMelodyChordProgression[autoPlaySettings.currentChordInProgressionIndex]; bassRootForCurrentBeat = fixedOriginalScalePalette.find(n => n.note === currentChordForBass.notes[0]) || mainNoteForBeatLogic; } const bassNoteMidiTarget = bassRootForCurrentBeat.midi - 12; let actualBassNoteInScale = fixedOriginalScalePalette.find(n => n.midi === bassNoteMidiTarget); if (autoPlaySettings.isPlayingArpeggio && currentMelodyNoteIndex > 0 && Math.random() < BASS_ALTERNATION_PROBABILITY) { const arpRootMidi = originalGeneratedMelody[0].midi; const currentTransposition = TRANSPOSITION_LEVEL_SEQUENCE[currentTranspositionCycleIndex]; const effectiveArpRootMidi = arpRootMidi + currentTransposition; const effectiveArpRootInPalette = fixedOriginalScalePalette.find(n => n.midi === effectiveArpRootMidi) || fixedOriginalScalePalette[0]; const arpRootIndexInPalette = fixedOriginalScalePalette.indexOf(effectiveArpRootInPalette); if (arpRootIndexInPalette !== -1 && (arpRootIndexInPalette + 4) < fixedOriginalScalePalette.length) { const fifthDegreeNote = fixedOriginalScalePalette[arpRootIndexInPalette + 4]; const fifthBassMidiTarget = fifthDegreeNote.midi - 12; const alternateBassTarget = fixedOriginalScalePalette.find(n => n.midi === fifthBassMidiTarget) || fixedOriginalScalePalette.find(n => n.midi === fifthDegreeNote.midi - 24); if(alternateBassTarget) actualBassNoteInScale = alternateBassTarget; } } currentArpeggioBassNote = actualBassNoteInScale; if (actualBassNoteInScale && actualBassNoteInScale.frequency) { if(!notesToPlayOnThisBeat.find(n => n.noteData.midi === actualBassNoteInScale.midi)) { notesToPlayOnThisBeat.push({ noteData: actualBassNoteInScale, gain: 0.7 }); } if (Math.random() < BASS_HARMONY_PROBABILITY && fixedOriginalScalePalette.length > 0) { const bassNoteIndexInPalette = fixedOriginalScalePalette.findIndex(n => n.midi === actualBassNoteInScale.midi); if (bassNoteIndexInPalette !== -1) { if ((bassNoteIndexInPalette + 2) < fixedOriginalScalePalette.length) { const bassHarmony3rd = fixedOriginalScalePalette[bassNoteIndexInPalette + 2]; if (bassHarmony3rd && bassHarmony3rd.frequency && !notesToPlayOnThisBeat.find(n=>n.noteData.midi === bassHarmony3rd.midi)) { notesToPlayOnThisBeat.push({ noteData: bassHarmony3rd, gain: 0.7 * BASS_HARMONY_GAIN_SCALE }); } } if ((bassNoteIndexInPalette + 4) < fixedOriginalScalePalette.length) { const bassHarmony5th = fixedOriginalScalePalette[bassNoteIndexInPalette + 4]; if (bassHarmony5th && bassHarmony5th.frequency && !notesToPlayOnThisBeat.find(n=>n.noteData.midi === bassHarmony5th.midi)) { notesToPlayOnThisBeat.push({ noteData: bassHarmony5th, gain: 0.7 * BASS_HARMONY_GAIN_SCALE }); } } } } } } if (!isPlayingScaleRun && !autoPlaySettings.isPlayingArpeggio && !autoPlaySettings.isPlayingRepeatingChords && autoPlaySettings.currentSongSection !== 'C' && Math.random() < PROBABILITY_PLAY_CHORDAL) { if (fixedOriginalScalePalette && fixedOriginalScalePalette.length > 0) { const mainMelodyNoteIndexInPalette = fixedOriginalScalePalette.findIndex(n => n.midi === mainNoteForBeatLogic.midi); if (mainMelodyNoteIndexInPalette !== -1) { if ((mainMelodyNoteIndexInPalette - 2) >= 0) { const chordNote2 = fixedOriginalScalePalette[mainMelodyNoteIndexInPalette - 2]; if (chordNote2 && chordNote2.frequency && !notesToPlayOnThisBeat.find(n=>n.noteData.midi === chordNote2.midi)) { notesToPlayOnThisBeat.push({ noteData: chordNote2, gain: CHORD_VOICING_GAIN_SCALE }); } } if ((mainMelodyNoteIndexInPalette - 4) >= 0) { const chordNote3 = fixedOriginalScalePalette[mainMelodyNoteIndexInPalette - 4]; if (chordNote3 && chordNote3.frequency && !notesToPlayOnThisBeat.find(n=>n.noteData.midi === chordNote3.midi)) { notesToPlayOnThisBeat.push({ noteData: chordNote3, gain: CHORD_VOICING_GAIN_SCALE }); } } } } } const notesPlayedMidi = []; notesToPlayOnThisBeat.forEach(item => { playNote(item.noteData.frequency, item.gain, item.noteData.midi, true); notesPlayedMidi.push(item.noteData.midi); const keyDataToHighlight = keysData.find(kd => kd.note === item.noteData.note); if (keyDataToHighlight) { const domElement = document.getElementById('key' + keyDataToHighlight.idSuffix); if (domElement && !domElement.classList.contains('auto-playing-note')) { domElement.classList.add('auto-playing-note'); lastAutoPlayedChordKeyElements.push(domElement); } } }); if(playingNotesDisplay) { const uniqueDisplayNotes = [...new Set(notesPlayedMidi.map(midi => (keysData.find(k => k.midi === midi) || {}).note).filter(Boolean))]; uniqueDisplayNotes.sort().forEach(noteName => { const noteEl = document.createElement('span'); noteEl.classList.add('playing-note-item'); noteEl.textContent = noteName; playingNotesDisplay.appendChild(noteEl); }); } const duration = durationFactorForBeat * autoPlaySettings.currentTempoMs; currentMelodyNoteIndex++; if (currentMelodyNoteIndex >= currentMelody.length) { currentMelodyNoteIndex = 0; currentMelodyRepetitionCount++; const repsForCurrentSegment = isPlayingScaleRun || autoPlaySettings.isPlayingRepeatingChords || autoPlaySettings.currentSongSection === 'C' ? 1 : MELODY_REPETITIONS; if (currentMelodyRepetitionCount >= repsForCurrentSegment) { currentMelodyRepetitionCount = 0; currentArpeggioBassNote = null; if (autoPlaySettings.currentSongSection === 'B') autoPlaySettings.currentRepeatingBassIndex = (autoPlaySettings.currentRepeatingBassIndex + 1) % (autoPlaySettings.repeatingBassPattern.length || 1); if (isPlayingScaleRun) { isPlayingScaleRun = false; currentTranspositionCycleIndex = (currentTranspositionCycleIndex + 1) % TRANSPOSITION_LEVEL_SEQUENCE.length; if (currentTranspositionCycleIndex === 0) autoPlaySettings.currentSongSectionIndex = (autoPlaySettings.currentSongSectionIndex + 1) % SONG_STRUCTURE.length; } else if (Math.random() < SCALE_RUN_PROBABILITY && !autoPlaySettings.isPlayingRepeatingChords && autoPlaySettings.currentSongSection !== 'C') { const scaleRun = generateScaleRun(); if (scaleRun.length > 0) { currentMelody = scaleRun; isPlayingScaleRun = true; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; } else { isPlayingScaleRun = false; currentTranspositionCycleIndex = (currentTranspositionCycleIndex + 1) % TRANSPOSITION_LEVEL_SEQUENCE.length; if (currentTranspositionCycleIndex === 0) autoPlaySettings.currentSongSectionIndex = (autoPlaySettings.currentSongSectionIndex + 1) % SONG_STRUCTURE.length;} } else { isPlayingScaleRun = false; currentTranspositionCycleIndex = (currentTranspositionCycleIndex + 1) % TRANSPOSITION_LEVEL_SEQUENCE.length; if (currentTranspositionCycleIndex === 0) { autoPlaySettings.currentSongSectionIndex = (autoPlaySettings.currentSongSectionIndex + 1) % SONG_STRUCTURE.length; } } if (!isPlayingScaleRun) { if (currentTranspositionCycleIndex === 0) { autoPlaySettings.currentTempoMs = effectiveBaseTempoMs * (1 + (Math.random() - 0.5) * TEMPO_VARIATION_PERCENT * 2); if (Math.random() < SLOW_TEMPO_PROBABILITY) autoPlaySettings.currentTempoMs *= SLOW_TEMPO_MULTIPLIER; const sigChoice = TIME_SIGNATURE_CONFIGS[Math.floor(Math.random() * TIME_SIGNATURE_CONFIGS.length)]; autoPlaySettings.currentMelodyLength = sigChoice.notesPerBar * sigChoice.bars; autoPlaySettings.isMonorhythmic = Math.random() < MONORHYTHM_PROBABILITY; const currentSectionType = SONG_STRUCTURE[autoPlaySettings.currentSongSectionIndex]; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; autoPlaySettings.repeatingBassPattern = []; autoPlaySettings.currentRepeatingBassIndex = 0; if (currentSectionType === 'A') { if (Math.random() < ARPEGGIO_PROBABILITY) { originalGeneratedMelody = generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingArpeggio = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } } else if (currentSectionType === 'B') { if (Math.random() < REPEATING_CHORD_PROBABILITY) { originalGeneratedMelody = generateRepeatingChordVoicingSequence(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingRepeatingChords = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); if(Math.random() < 0.7) autoPlaySettings.repeatingBassPattern = generateRepeatingBassPattern(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass); } } else if (currentSectionType === 'C') { originalGeneratedMelody = generateChordToneMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } if (originalGeneratedMelody.length === 0) { stopAutoPlay(); return; } } const transpositionSemitones = TRANSPOSITION_LEVEL_SEQUENCE[currentTranspositionCycleIndex]; currentMelody = transposeAndSnapMelodyToPalette(originalGeneratedMelody, transpositionSemitones, fixedOriginalScalePalette); if (currentMelody.length === 0) { const currentSectionType = SONG_STRUCTURE[autoPlaySettings.currentSongSectionIndex]; if (currentSectionType === 'A') { originalGeneratedMelody = (Math.random() < ARPEGGIO_PROBABILITY) ? generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength) : generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingArpeggio = (originalGeneratedMelody[0] && originalGeneratedMelody[0].durationFactor === ARPEGGIO_NOTE_DURATION_FACTOR); } else if (currentSectionType === 'B') { originalGeneratedMelody = (Math.random() < REPEATING_CHORD_PROBABILITY) ? generateRepeatingChordVoicingSequence(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength) : generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingRepeatingChords = (originalGeneratedMelody[0] && Array.isArray(originalGeneratedMelody[0].notes)); if(!autoPlaySettings.isPlayingRepeatingChords && Math.random() < 0.7) autoPlaySettings.repeatingBassPattern = generateRepeatingBassPattern(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass);} else if (currentSectionType === 'C') { originalGeneratedMelody = generateChordToneMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); } else {originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength);} currentMelody = [...originalGeneratedMelody]; currentTranspositionCycleIndex = 0; if(currentMelody.length === 0) { stopAutoPlay(); return; } } } } } autoPlayTimeoutId = setTimeout(playNextMelodyNote, duration); }
-        function startAutoPlay() { if (isAutoPlaying) return; autoPlaySettings.originalRootPitchClass = document.getElementById('rootNoteSelect').value; autoPlaySettings.originalScalePattern = document.getElementById('semistepsInput').value; fixedOriginalScalePalette = getFullScaleRange(autoPlaySettings.originalRootPitchClass, autoPlaySettings.originalScalePattern); if (fixedOriginalScalePalette.length < 2) { alert("Not enough notes in selected scale."); return; } autoPlaySettings.currentSongSectionIndex = 0; const initialSectionType = SONG_STRUCTURE[autoPlaySettings.currentSongSectionIndex]; autoPlaySettings.currentTempoMs = effectiveBaseTempoMs * (1 + (Math.random() - 0.5) * TEMPO_VARIATION_PERCENT * 2); if (Math.random() < SLOW_TEMPO_PROBABILITY) autoPlaySettings.currentTempoMs *= SLOW_TEMPO_MULTIPLIER; const sigChoice = TIME_SIGNATURE_CONFIGS[Math.floor(Math.random() * TIME_SIGNATURE_CONFIGS.length)]; autoPlaySettings.currentMelodyLength = sigChoice.notesPerBar * sigChoice.bars; autoPlaySettings.isMonorhythmic = Math.random() < MONORHYTHM_PROBABILITY; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; autoPlaySettings.repeatingBassPattern = []; autoPlaySettings.currentRepeatingBassIndex = 0; if (initialSectionType === 'A') { if (Math.random() < ARPEGGIO_PROBABILITY) { originalGeneratedMelody = generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingArpeggio = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } } else if (initialSectionType === 'B') { if (Math.random() < REPEATING_CHORD_PROBABILITY) { originalGeneratedMelody = generateRepeatingChordVoicingSequence(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingRepeatingChords = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); if(Math.random() < 0.6) autoPlaySettings.repeatingBassPattern = generateRepeatingBassPattern(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass); } } else if (initialSectionType === 'C') { originalGeneratedMelody = generateChordToneMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } if (originalGeneratedMelody.length === 0) { alert("Could not generate initial melody."); return; } isAutoPlaying = true; document.getElementById('autoPlayBtn').textContent = 'Stop'; document.getElementById('autoPlayBtn').classList.add('playing'); currentMelody = [...originalGeneratedMelody]; currentMelodyNoteIndex = 0; currentMelodyRepetitionCount = 0; currentTranspositionCycleIndex = 0; isPlayingScaleRun = false; currentArpeggioBassNote = null; playNextMelodyNote(); }
-        function stopAutoPlay(resetButtonUI = true) { isAutoPlaying = false; clearTimeout(autoPlayTimeoutId); autoPlayTimeoutId = null; isPlayingScaleRun = false; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; autoPlaySettings.repeatingBassPattern = []; currentArpeggioBassNote = null; lastAutoPlayedChordKeyElements.forEach(el => el.classList.remove('auto-playing-note')); lastAutoPlayedChordKeyElements = []; activeMidiNotes.forEach(timeoutId => clearTimeout(timeoutId)); activeMidiNotes.clear(); const playingNotesDisplay = document.getElementById('currentlyPlayingNotesDisplay'); if(playingNotesDisplay) playingNotesDisplay.innerHTML = ''; if (resetButtonUI) { const autoPlayBtn = document.getElementById('autoPlayBtn'); if (autoPlayBtn) { autoPlayBtn.textContent = 'Start'; autoPlayBtn.classList.remove('playing'); } } }
+        function startAutoPlay() { if (isSongMakerPlaying) { stopSongMaker(); } if (isAutoPlaying) return; document.querySelectorAll('.song-maker-master-controls button, .song-maker-master-controls input').forEach(el => el.disabled = true); autoPlaySettings.originalRootPitchClass = document.getElementById('rootNoteSelect').value; autoPlaySettings.originalScalePattern = document.getElementById('semistepsInput').value; fixedOriginalScalePalette = getFullScaleRange(autoPlaySettings.originalRootPitchClass, autoPlaySettings.originalScalePattern); if (fixedOriginalScalePalette.length < 2) { alert("Not enough notes in selected scale."); document.querySelectorAll('.song-maker-master-controls button, .song-maker-master-controls input').forEach(el => el.disabled = false); return; } autoPlaySettings.currentSongSectionIndex = 0; const initialSectionType = SONG_STRUCTURE[autoPlaySettings.currentSongSectionIndex]; autoPlaySettings.currentTempoMs = effectiveBaseTempoMs * (1 + (Math.random() - 0.5) * TEMPO_VARIATION_PERCENT * 2); if (Math.random() < SLOW_TEMPO_PROBABILITY) autoPlaySettings.currentTempoMs *= SLOW_TEMPO_MULTIPLIER; const sigChoice = TIME_SIGNATURE_CONFIGS[Math.floor(Math.random() * TIME_SIGNATURE_CONFIGS.length)]; autoPlaySettings.currentMelodyLength = sigChoice.notesPerBar * sigChoice.bars; autoPlaySettings.isMonorhythmic = Math.random() < MONORHYTHM_PROBABILITY; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; autoPlaySettings.repeatingBassPattern = []; autoPlaySettings.currentRepeatingBassIndex = 0; if (initialSectionType === 'A') { if (Math.random() < ARPEGGIO_PROBABILITY) { originalGeneratedMelody = generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingArpeggio = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } } else if (initialSectionType === 'B') { if (Math.random() < REPEATING_CHORD_PROBABILITY) { originalGeneratedMelody = generateRepeatingChordVoicingSequence(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); autoPlaySettings.isPlayingRepeatingChords = true; } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); if(Math.random() < 0.6) autoPlaySettings.repeatingBassPattern = generateRepeatingBassPattern(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass); } } else if (initialSectionType === 'C') { originalGeneratedMelody = generateChordToneMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); } else { originalGeneratedMelody = generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); } if (originalGeneratedMelody.length === 0) { alert("Could not generate initial melody."); document.querySelectorAll('.song-maker-master-controls button, .song-maker-master-controls input').forEach(el => el.disabled = false); return; } isAutoPlaying = true; document.getElementById('autoPlayBtn').textContent = 'Stop'; document.getElementById('autoPlayBtn').classList.add('playing'); currentMelody = [...originalGeneratedMelody]; currentMelodyNoteIndex = 0; currentMelodyRepetitionCount = 0; currentTranspositionCycleIndex = 0; isPlayingScaleRun = false; currentArpeggioBassNote = null; playNextMelodyNote(); }
+        function stopAutoPlay(resetButtonUI = true) { isAutoPlaying = false; clearTimeout(autoPlayTimeoutId); autoPlayTimeoutId = null; isPlayingScaleRun = false; autoPlaySettings.isPlayingArpeggio = false; autoPlaySettings.isPlayingRepeatingChords = false; autoPlaySettings.repeatingBassPattern = []; currentArpeggioBassNote = null; lastAutoPlayedChordKeyElements.forEach(el => el.classList.remove('auto-playing-note')); lastAutoPlayedChordKeyElements = []; activeMidiNotes.forEach(timeoutId => clearTimeout(timeoutId)); activeMidiNotes.clear(); const playingNotesDisplay = document.getElementById('currentlyPlayingNotesDisplay'); if(playingNotesDisplay) playingNotesDisplay.innerHTML = ''; document.querySelectorAll('.song-maker-master-controls button, .song-maker-master-controls input').forEach(el => el.disabled = false); if (resetButtonUI) { const autoPlayBtn = document.getElementById('autoPlayBtn'); if (autoPlayBtn) { autoPlayBtn.textContent = 'Start'; autoPlayBtn.classList.remove('playing'); } } }
         function toggleAutoPlay() { if (!initAudioContext()) return; if (isAutoPlaying) stopAutoPlay(); else startAutoPlay(); }
+
+        // --- Song Maker ---
+        let isSongMakerPlaying = false;
+        let isSongMakerRepeatOn = false;
+        let songMakerPlaybackTimeouts = [];
+
+        function stopSongMaker(resetButtonUI = true) {
+            isSongMakerPlaying = false;
+            songMakerPlaybackTimeouts.forEach(clearTimeout);
+            songMakerPlaybackTimeouts = [];
+            document.querySelectorAll('.key.auto-playing-note').forEach(k => k.classList.remove('auto-playing-note'));
+
+            if (resetButtonUI) {
+                const playBtn = document.getElementById('songMakerPlayBtn');
+                if (playBtn) {
+                    playBtn.textContent = 'Play Song';
+                    playBtn.classList.remove('playing');
+                }
+            }
+            document.getElementById('autoPlayBtn').disabled = false;
+        }
+
+        function toggleSongMaker() {
+            if (!initAudioContext()) return;
+            if (isSongMakerPlaying) {
+                stopSongMaker();
+            } else {
+                if (isAutoPlaying) {
+                    stopAutoPlay();
+                }
+                playSongMaker();
+            }
+        }
+
+function playSongMaker() {
+            const tracksContainer = document.getElementById('songMakerTracksContainer');
+            let trackDivs = Array.from(tracksContainer.querySelectorAll('.song-maker-track'));
+            const playBtn = document.getElementById('songMakerPlayBtn');
+            const mainRootPitchClass = document.getElementById('rootNoteSelect').value;
+            const scalePalette = getFullScaleRange(mainRootPitchClass, document.getElementById('semistepsInput').value);
+
+            if (scalePalette.length === 0) {
+                alert("The current scale is empty. Cannot play song.");
+                return;
+            }
+
+            const mainRootNote = scalePalette.find(n => n.pitchClass === mainRootPitchClass && n.octave === 4) ||
+                                 scalePalette.find(n => n.pitchClass === mainRootPitchClass);
+
+            if (!mainRootNote) {
+                alert(`Master root note "${mainRootPitchClass}" not found in the generated scale range.`);
+                return;
+            }
+            const mainRootNoteIndex = scalePalette.indexOf(mainRootNote);
+
+            let trackData = trackDivs.map(div => ({
+                startingIntervals: div.querySelector('.track-roots-input').value.split(',').map(s => parseInt(s.trim(), 10)).filter(s => !isNaN(s)),
+                intervals: div.querySelector('.track-intervals-input').value.split(',').map(s => s.trim()),
+                isMuted: div.querySelector('.track-button.mute').classList.contains('active'),
+                isSolo: div.querySelector('.track-button.solo').classList.contains('active'),
+                velocity: parseFloat(div.querySelector('.track-velocity-slider').value),
+                element: div
+            }));
+
+            const isAnySolo = trackData.some(t => t.isSolo);
+            let activeTracks = isAnySolo ? trackData.filter(t => t.isSolo) : trackData.filter(t => !t.isMuted);
+
+            if (activeTracks.length === 0 && !isSongMakerRepeatOn) {
+                alert("No active tracks to play. Un-mute a track or de-activate solo mode.");
+                return;
+            }
+
+            isSongMakerPlaying = true;
+            playBtn.textContent = 'Stop';
+            playBtn.classList.add('playing');
+            document.getElementById('autoPlayBtn').disabled = true;
+            
+            let masterTimeline = [];
+            const isHumanizerActive = document.getElementById('humanizerToggleBtn').classList.contains('active');
+            const timingVariation = isHumanizerActive ? parseInt(document.getElementById('humanizerTimingSlider').value, 10) : 0;
+            const velocityVariation = isHumanizerActive ? parseInt(document.getElementById('humanizerVelocitySlider').value, 10) : 0;
+
+            activeTracks.forEach(track => {
+                let currentTime = 0;
+                let lastNotePlayed = null;
+
+                track.startingIntervals.forEach(startInterval => {
+                    const startNoteIndex = mainRootNoteIndex + (startInterval - 1);
+                    const rootNoteData = scalePalette[startNoteIndex];
+                    
+                    if (!rootNoteData) {
+                         console.warn(`Starting interval "${startInterval}" is out of the scale's range. Skipping.`);
+                         return; // continue to next starting interval
+                    }
+                    const rootNoteIndexInPalette = scalePalette.indexOf(rootNoteData);
+
+                    track.intervals.forEach(intervalStr => {
+                        let noteToPlay = null;
+                        if(intervalStr === '-') { // Hold
+                            noteToPlay = lastNotePlayed;
+                        } else {
+                            const interval = parseInt(intervalStr, 10);
+                            if (!isNaN(interval)) {
+                                if (interval !== 0) { // 0 is a pause
+                                    const targetIndex = rootNoteIndexInPalette + (interval - (interval > 0 ? 1 : 0));
+                                    if (targetIndex >= 0 && targetIndex < scalePalette.length) {
+                                        noteToPlay = scalePalette[targetIndex];
+                                    } else {
+                                        console.warn(`Interval ${interval} from start interval ${startInterval} is out of range.`);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (noteToPlay) {
+                            let humanizedTime = currentTime;
+                            if (isHumanizerActive) {
+                                const timeOffset = (effectiveBaseTempoMs * (timingVariation / 100)) * (Math.random() * 2 - 1);
+                                humanizedTime += timeOffset;
+                            }
+                            
+                            let humanizedVelocity = track.velocity;
+                            if(isHumanizerActive) {
+                                const velOffset = Math.floor(velocityVariation * (Math.random() * 2 - 1));
+                                humanizedVelocity = Math.max(0, Math.min(1, humanizedVelocity + velOffset / 127));
+                            }
+
+                            masterTimeline.push({
+                                time: humanizedTime,
+                                note: noteToPlay,
+                                velocity: humanizedVelocity
+                            });
+                            lastNotePlayed = noteToPlay;
+                        } else {
+                            lastNotePlayed = null; // Pause or invalid interval resets the hold
+                        }
+                        currentTime += effectiveBaseTempoMs;
+                    });
+                });
+            });
+            
+            masterTimeline.sort((a,b) => a.time - b.time);
+
+            masterTimeline.forEach(event => {
+                const timeoutId = setTimeout(() => {
+                    if (!isSongMakerPlaying) return;
+                    playNote(event.note.frequency, event.velocity, event.note.midi, true);
+                    const keyElement = document.getElementById('key' + event.note.idSuffix);
+                    if (keyElement) {
+                        keyElement.classList.add('auto-playing-note');
+                        const highlightTimeout = setTimeout(() => keyElement.classList.remove('auto-playing-note'), effectiveBaseTempoMs * 0.9);
+                        songMakerPlaybackTimeouts.push(highlightTimeout);
+                    }
+                }, event.time);
+                songMakerPlaybackTimeouts.push(timeoutId);
+            });
+            
+            const totalDuration = masterTimeline.length > 0 ? Math.max(...masterTimeline.map(e => e.time)) + effectiveBaseTempoMs : 
+                                  (activeTracks.length > 0 ? Math.max(...activeTracks.map(t => (t.startingIntervals.length * t.intervals.length) || 0)) * effectiveBaseTempoMs : effectiveBaseTempoMs);
+
+            const endTimeout = setTimeout(() => {
+                if (isSongMakerPlaying) {
+                    if (isSongMakerRepeatOn) {
+                        document.querySelectorAll('.key.auto-playing-note').forEach(k => k.classList.remove('auto-playing-note'));
+                        songMakerPlaybackTimeouts = [];
+                        playSongMaker(); // Loop
+                    } else {
+                        stopSongMaker();
+                    }
+                }
+            }, totalDuration);
+            songMakerPlaybackTimeouts.push(endTimeout);
+        }
+        
+        // --- General UI ---
         function updateSemitoneSum() { const semistepsInput = document.getElementById('semistepsInput'); const sumDisplay = document.getElementById('semistepsSumDisplay'); const sum = semistepsInput.value.split('').map(s => parseInt(s, 10)).filter(n => !isNaN(n)).reduce((a, b) => a + b, 0); sumDisplay.textContent = `(Sum: ${sum})`; sumDisplay.classList.toggle('non-octave', sum !== 12 && sum !== 0); }
-        function applyScaleFilter() { stopAutoPlay(true); const rootNote = document.getElementById('rootNoteSelect').value; const semisteps = document.getElementById('semistepsInput').value; const { notesWithIntervals, fullNoteNames } = getScaleNotesWithOctaves(rootNote, semisteps); document.querySelectorAll('.key').forEach(keyElement => { keyElement.classList.remove('chord-note-active', 'auto-playing-note'); const keyPitchClass = keyElement.dataset.pitchClass; const originalNoteName = keyElement.dataset.originalNoteName; const labelElement = keyElement.querySelector('.key-label'); const noteInfoInScaleForInterval = notesWithIntervals.find(sci => sci.note === originalNoteName); const isPitchClassInScale = notesWithIntervals.some(sci => sci.pitchClass === keyPitchClass); if (isPitchClassInScale) { keyElement.classList.remove('key-disabled'); if (noteInfoInScaleForInterval) { labelElement.innerHTML = `${originalNoteName}<br>(${noteInfoInScaleForInterval.interval})`; } else { const anyIntervalForPitchClass = notesWithIntervals.find(sci => sci.pitchClass === keyPitchClass); if (anyIntervalForPitchClass) { labelElement.innerHTML = `${originalNoteName}<br>(${anyIntervalForPitchClass.interval})`; } else { labelElement.textContent = originalNoteName; }} } else { keyElement.classList.add('key-disabled'); labelElement.textContent = originalNoteName; } }); const scaleNotesDisplay = document.getElementById('scaleNotesDisplay'); scaleNotesDisplay.innerHTML = ''; fullNoteNames.forEach(noteName => { const noteEl = document.createElement('span'); noteEl.classList.add('scale-note-item'); noteEl.textContent = noteName; scaleNotesDisplay.appendChild(noteEl); }); const chordButtonsDisplay = document.getElementById('chordButtonsDisplay'); chordButtonsDisplay.innerHTML = ''; const triads = getDiatonicTriads(rootNote, semisteps); triads.forEach(triad => { const button = document.createElement('button'); button.classList.add('chord-button'); button.textContent = triad.label; button.dataset.chordNotes = JSON.stringify(triad.notes); button.addEventListener('click', () => playAndHighlightChord(triad.notes)); chordButtonsDisplay.appendChild(button); }); updateSemitoneSum(); }
+        function applyScaleFilter() { stopAutoPlay(true); stopSongMaker(true); const rootNote = document.getElementById('rootNoteSelect').value; const semisteps = document.getElementById('semistepsInput').value; const { notesWithIntervals, fullNoteNames } = getScaleNotesWithOctaves(rootNote, semisteps); document.querySelectorAll('.key').forEach(keyElement => { keyElement.classList.remove('chord-note-active', 'auto-playing-note'); const keyPitchClass = keyElement.dataset.pitchClass; const originalNoteName = keyElement.dataset.originalNoteName; const labelElement = keyElement.querySelector('.key-label'); const noteInfoInScaleForInterval = notesWithIntervals.find(sci => sci.note === originalNoteName); const isPitchClassInScale = notesWithIntervals.some(sci => sci.pitchClass === keyPitchClass); if (isPitchClassInScale) { keyElement.classList.remove('key-disabled'); if (noteInfoInScaleForInterval) { labelElement.innerHTML = `${originalNoteName}<br>(${noteInfoInScaleForInterval.interval})`; } else { const anyIntervalForPitchClass = notesWithIntervals.find(sci => sci.pitchClass === keyPitchClass); if (anyIntervalForPitchClass) { labelElement.innerHTML = `${originalNoteName}<br>(${anyIntervalForPitchClass.interval})`; } else { labelElement.textContent = originalNoteName; }} } else { keyElement.classList.add('key-disabled'); labelElement.textContent = originalNoteName; } }); const scaleNotesDisplay = document.getElementById('scaleNotesDisplay'); scaleNotesDisplay.innerHTML = ''; fullNoteNames.forEach(noteName => { const noteEl = document.createElement('span'); noteEl.classList.add('scale-note-item'); noteEl.textContent = noteName; scaleNotesDisplay.appendChild(noteEl); }); const chordButtonsDisplay = document.getElementById('chordButtonsDisplay'); chordButtonsDisplay.innerHTML = ''; const triads = getDiatonicTriads(rootNote, semisteps); triads.forEach(triad => { const button = document.createElement('button'); button.classList.add('chord-button'); button.textContent = triad.label; button.dataset.chordNotes = JSON.stringify(triad.notes); button.addEventListener('click', () => playAndHighlightChord(triad.notes)); chordButtonsDisplay.appendChild(button); }); updateSemitoneSum(); }
         let activeChordHighlightTimeout; function playAndHighlightChord(chordNoteNames) { if (!initAudioContext()) return; clearTimeout(activeChordHighlightTimeout); document.querySelectorAll('.key.chord-note-active').forEach(k => k.classList.remove('chord-note-active')); chordNoteNames.forEach(noteName => { const keyToPlay = keysData.find(kd => kd.note === noteName); if (keyToPlay && keyToPlay.frequency) { playNote(keyToPlay.frequency, 1, keyToPlay.midi, false); const keyElement = document.getElementById('key' + keyToPlay.idSuffix); if (keyElement) keyElement.classList.add('chord-note-active'); } }); activeChordHighlightTimeout = setTimeout(() => { document.querySelectorAll('.key.chord-note-active').forEach(k => k.classList.remove('chord-note-active')); }, 1000); }
 
         // --- MIDI I/O ---
@@ -575,17 +839,313 @@
                 }
             }
         }
-        function populateScaleDropdowns() { const rootNoteSelect = document.getElementById('rootNoteSelect'); const currentRoot = rootNoteSelect.value; rootNoteSelect.innerHTML = ''; ALL_NOTES_CHROMATIC.forEach(note => { const option = document.createElement('option'); option.value = note; option.textContent = note; rootNoteSelect.appendChild(option); }); rootNoteSelect.value = ALL_NOTES_CHROMATIC.includes(currentRoot) ? currentRoot : "C"; const scaleSelect = document.getElementById('scaleSelect'); const currentScaleSteps = scaleSelect.value; scaleSelect.innerHTML = ''; PREDEFINED_SCALES.forEach(scale => { const option = document.createElement('option'); option.value = scale.steps; option.textContent = scale.name; scaleSelect.appendChild(option); }); let foundSelected = false; const ionianIndex = PREDEFINED_SCALES.findIndex(s => s.name === "Ionian (Major)" || s.name === "Ionian"); for(let i=0; i < scaleSelect.options.length; i++){ if(scaleSelect.options[i].value === currentScaleSteps){ scaleSelect.selectedIndex = i; foundSelected = true; break; } } if(!foundSelected && scaleSelect.options.length > 0){ scaleSelect.selectedIndex = ionianIndex !== -1 ? ionianIndex : 0; } if(scaleSelect.value) document.getElementById('semistepsInput').value = scaleSelect.value; else if (scaleSelect.options.length > 0) document.getElementById('semistepsInput').value = scaleSelect.options[0].value; }
+        function populateScaleDropdowns() { const rootNoteSelect = document.getElementById('rootNoteSelect'); const currentRoot = rootNoteSelect.value; rootNoteSelect.innerHTML = ''; ALL_NOTES_CHROMATIC.forEach(note => { const option = document.createElement('option'); option.value = note; option.textContent = note; rootNoteSelect.appendChild(option); }); rootNoteSelect.value = ALL_NOTES_CHROMATIC.includes(currentRoot) ? currentRoot : "C"; const scaleSelect = document.getElementById('scaleSelect'); const currentScaleSteps = scaleSelect.value; scaleSelect.innerHTML = ''; PREDEFINED_SCALES.forEach(scale => { const option = document.createElement('option'); option.value = scale.steps; option.textContent = scale.steps ? `${scale.name} (${scale.steps})` : scale.name; scaleSelect.appendChild(option); }); let foundSelected = false; const ionianIndex = PREDEFINED_SCALES.findIndex(s => s.name === "Ionian (Major)" || s.name === "Ionian"); for(let i=0; i < scaleSelect.options.length; i++){ if(scaleSelect.options[i].value === currentScaleSteps){ scaleSelect.selectedIndex = i; foundSelected = true; break; } } if(!foundSelected && scaleSelect.options.length > 0){ scaleSelect.selectedIndex = ionianIndex !== -1 ? ionianIndex : 0; } if(scaleSelect.value) document.getElementById('semistepsInput').value = scaleSelect.value; else if (scaleSelect.options.length > 0) document.getElementById('semistepsInput').value = scaleSelect.options[0].value; }
         function updateSamplerOptionInSelect(selectAfterAdding = false) { const soundSelect = document.getElementById('soundTypeSelect'); let samplerOption = soundSelect.querySelector('option[value="sampler"]'); if (loadedSampleBuffers.has('sampler')) { if (!samplerOption) { samplerOption = document.createElement('option'); samplerOption.value = 'sampler'; samplerOption.textContent = 'Sampler (User)'; soundSelect.appendChild(samplerOption); } if (selectAfterAdding) { soundSelect.value = 'sampler'; } } else { if (samplerOption) { if (soundSelect.value === 'sampler') { soundSelect.selectedIndex = 0; } samplerOption.remove(); } } }
         function populateSoundSelect() { const soundTypeSelect = document.getElementById('soundTypeSelect'); const currentSoundId = soundTypeSelect.value; soundTypeSelect.innerHTML = ''; PREDEFINED_SOUNDS.forEach(sound => { const option = document.createElement('option'); option.value = sound.id; option.textContent = sound.name; soundTypeSelect.appendChild(option); }); updateSamplerOptionInSelect(false); if (PREDEFINED_SOUNDS.some(s => s.id === currentSoundId)) { soundTypeSelect.value = currentSoundId; } else if (soundTypeSelect.value !== 'sampler') { const classicPiano = PREDEFINED_SOUNDS.find(s => s.id === "classic_piano"); soundTypeSelect.value = classicPiano ? classicPiano.id : (PREDEFINED_SOUNDS[0] ? PREDEFINED_SOUNDS[0].id : ''); } }
         function toggleScaleSet() { const toggleBtn = document.getElementById('scaleSetToggleBtn'); const scaleSelect = document.getElementById('scaleSelect'); const semistepsInput = document.getElementById('semistepsInput'); isZeitlerSetCurrent = !isZeitlerSetCurrent; if (isZeitlerSetCurrent) { PREDEFINED_SCALES = ZEITLER_SCALES; toggleBtn.textContent = 'Basic'; } else { PREDEFINED_SCALES = BASIC_SCALES; toggleBtn.textContent = 'Zeitler'; } populateScaleDropdowns(); if (scaleSelect.options.length > 0) { scaleSelect.selectedIndex = 0; semistepsInput.value = scaleSelect.value; } applyScaleFilter(); }
-        function toggle88Keys() { is88KeyMode = !is88KeyMode; const btn = document.getElementById('toggle88KeysBtn'); stopAutoPlay(true); if (is88KeyMode) { generateKeysData('A0', 'C8'); btn.textContent = '3 Octave'; } else { generateKeysData('C3', 'B5'); btn.textContent = '88 Keys'; } createPianoKeys(); applyScaleFilter(); }
+        function toggle88Keys() { is88KeyMode = !is88KeyMode; const btn = document.getElementById('toggle88KeysBtn'); stopAutoPlay(true); stopSongMaker(true); if (is88KeyMode) { generateKeysData('A0', 'C8'); btn.textContent = '3 Octave'; } else { generateKeysData('C3', 'B5'); btn.textContent = '88 Keys'; } createPianoKeys(); applyScaleFilter(); }
         function populateDropdowns() { populateScaleDropdowns(); populateSoundSelect(); }
-        function setupTetrachordControls() { const lowerSelect = document.getElementById('lowerTetrachordSelect'); const upperSelect = document.getElementById('upperTetrachordSelect'); const middleStepDisplay = document.getElementById('middleStepDisplay'); const createBtn = document.getElementById('createScaleFromTetrachordsBtn'); const semistepsInput = document.getElementById('semistepsInput'); function populateTetrachordSelects() { lowerSelect.innerHTML = ''; upperSelect.innerHTML = ''; TETRACHORDS.forEach(t => { const option = document.createElement('option'); option.value = t.steps; option.textContent = t.name; lowerSelect.appendChild(option.cloneNode(true)); upperSelect.appendChild(option); }); lowerSelect.value = "221"; upperSelect.value = "212"; } function updateTetrachordScale() { const lowerSteps = lowerSelect.value; const upperSteps = upperSelect.value; const lowerSum = lowerSteps.split('').reduce((sum, s) => sum + parseInt(s, 10), 0); const upperSum = upperSteps.split('').reduce((sum, s) => sum + parseInt(s, 10), 0); const middleStep = 12 - lowerSum - upperSum; middleStepDisplay.textContent = middleStep >= 0 ? `+${middleStep}` : `${middleStep}`; middleStepDisplay.style.color = (middleStep < 0) ? '#f44336' : '#8f8'; } populateTetrachordSelects(); updateTetrachordScale(); lowerSelect.addEventListener('change', updateTetrachordScale); upperSelect.addEventListener('change', updateTetrachordScale); createBtn.addEventListener('click', () => { const lowerSteps = lowerSelect.value; const upperSteps = upperSelect.value; const lowerSum = lowerSteps.split('').reduce((sum, s) => sum + parseInt(s, 10), 0); const upperSum = upperSteps.split('').reduce((sum, s) => sum + parseInt(s, 10), 0); const middleStep = 12 - lowerSum - upperSum; if (middleStep < 0) { alert("Tetrachord combination is too long."); return; } semistepsInput.value = `${lowerSteps}${middleStep}${upperSteps}`; semistepsInput.dispatchEvent(new Event('input')); }); }
+        function setupTetrachordControls() { const lowerSelect = document.getElementById('lowerTetrachordSelect'); const upperSelect = document.getElementById('upperTetrachordSelect'); const middleStepDisplay = document.getElementById('middleStepDisplay'); const createBtn = document.getElementById('createScaleFromTetrachordsBtn'); const semistepsInput = document.getElementById('semistepsInput'); function populateTetrachordSelects() { lowerSelect.innerHTML = ''; upperSelect.innerHTML = ''; TETRACHORDS.forEach(t => { const option = document.createElement('option'); option.value = t.steps; option.textContent = `${t.name} (${t.steps})`; lowerSelect.appendChild(option.cloneNode(true)); upperSelect.appendChild(option); }); lowerSelect.value = "221"; upperSelect.value = "212"; } function updateTetrachordScale() { const lowerSteps = lowerSelect.value; const upperSteps = upperSelect.value; const lowerSum = lowerSteps.split('').reduce((sum, s) => sum + parseInt(s, 10), 0); const upperSum = upperSteps.split('').reduce((sum, s) => sum + parseInt(s, 10), 0); const middleStep = 12 - lowerSum - upperSum; middleStepDisplay.textContent = middleStep >= 0 ? `+${middleStep}` : `${middleStep}`; middleStepDisplay.style.color = (middleStep < 0) ? '#f44336' : '#8f8'; } populateTetrachordSelects(); updateTetrachordScale(); lowerSelect.addEventListener('change', updateTetrachordScale); upperSelect.addEventListener('change', updateTetrachordScale); createBtn.addEventListener('click', () => { const lowerSteps = lowerSelect.value; const upperSteps = upperSelect.value; const lowerSum = lowerSteps.split('').reduce((sum, s) => sum + parseInt(s, 10), 0); const upperSum = upperSteps.split('').reduce((sum, s) => sum + parseInt(s, 10), 0); const middleStep = 12 - lowerSum - upperSum; if (middleStep < 0) { alert("Tetrachord combination is too long."); return; } semistepsInput.value = `${lowerSteps}${middleStep}${upperSteps}`; semistepsInput.dispatchEvent(new Event('input')); }); }
+        
+        // --- Song Maker UI ---
+        function generateSongMakerTracks(count) {
+            const container = document.getElementById('songMakerTracksContainer');
+            container.innerHTML = '';
+            for (let i = 1; i <= count; i++) {
+                const trackDiv = document.createElement('div');
+                trackDiv.className = 'song-maker-track';
+                trackDiv.innerHTML = `
+                    <div class="song-maker-track-header">
+                        <span class="track-title">Track ${i}</span>
+                        <button class="track-button solo">Solo</button>
+                        <button class="track-button mute">Mute</button>
+                        <label>Vel:</label>
+                        <input type="range" class="track-velocity-slider" min="0" max="1" step="0.01" value="0.7">
+                    </div>
+                    <div class="track-inputs">
+                        <input type="text" class="track-roots-input" placeholder="Starting Intervals (relative to Root) e.g., 1, 5, -2">
+                        <input type="text" class="track-intervals-input" placeholder="Scale Intervals (relative to Start) e.g., 1, 3, 5, 0, -">
+                    </div>
+                `;
+                container.appendChild(trackDiv);
+            }
+            // Add event listeners for new solo/mute buttons
+             container.querySelectorAll('.track-button.solo').forEach(btn => btn.addEventListener('click', () => btn.classList.toggle('active')));
+             container.querySelectorAll('.track-button.mute').forEach(btn => btn.addEventListener('click', () => btn.classList.toggle('active')));
+        }
+        
+        function setupSongMakerControls() {
+            const trackCountInput = document.getElementById('songMakerTrackCount');
+            trackCountInput.addEventListener('change', () => {
+                const count = parseInt(trackCountInput.value, 10);
+                if (count > 0 && count <= 16) {
+                    generateSongMakerTracks(count);
+                }
+            });
+
+            document.getElementById('humanizerToggleBtn').addEventListener('click', (e) => {
+                e.target.classList.toggle('active');
+                document.getElementById('humanizerControls').classList.toggle('visible');
+            });
+            
+            document.getElementById('saveSongBtn').addEventListener('click', saveSongToFile);
+            document.getElementById('loadSongBtn').addEventListener('click', () => document.getElementById('songFileInput').click());
+            document.getElementById('songFileInput').addEventListener('change', loadSongFromFile);
+            document.getElementById('saveMidiBtn').addEventListener('click', saveToMidiFile);
+
+            generateSongMakerTracks(parseInt(trackCountInput.value, 10)); // Initial tracks
+        }
+
+        // --- Song Maker File I/O ---
+function saveSongToFile() {
+            const tracks = Array.from(document.querySelectorAll('.song-maker-track')).map(div => ({
+                startingIntervals: div.querySelector('.track-roots-input').value,
+                intervals: div.querySelector('.track-intervals-input').value,
+                isMuted: div.querySelector('.track-button.mute').classList.contains('active'),
+                isSolo: div.querySelector('.track-button.solo').classList.contains('active'),
+                velocity: div.querySelector('.track-velocity-slider').value
+            }));
+
+            const humanizer = {
+                active: document.getElementById('humanizerToggleBtn').classList.contains('active'),
+                timing: document.getElementById('humanizerTimingSlider').value,
+                velocity: document.getElementById('humanizerVelocitySlider').value
+            };
+
+            const songData = {
+                trackCount: tracks.length,
+                tracks: tracks,
+                humanizer: humanizer,
+                tempo: document.getElementById('tempoInput').value,
+                repeat: isSongMakerRepeatOn
+            };
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(songData, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "piano_song.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function loadSongFromFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const songData = JSON.parse(e.target.result);
+                    if (!songData || !songData.tracks) throw new Error("Invalid format");
+                    
+                    stopSongMaker();
+                    
+                    document.getElementById('tempoInput').value = songData.tempo || 80;
+                    document.getElementById('tempoSlider').value = songData.tempo || 80;
+                    syncTempo(songData.tempo || 80);
+
+                    const trackCountInput = document.getElementById('songMakerTrackCount');
+                    trackCountInput.value = songData.trackCount;
+                    generateSongMakerTracks(songData.trackCount);
+
+                    const trackDivs = document.querySelectorAll('.song-maker-track');
+                    songData.tracks.forEach((track, index) => {
+                        if (trackDivs[index]) {
+                            const div = trackDivs[index];
+                            div.querySelector('.track-roots-input').value = track.startingIntervals;
+                            div.querySelector('.track-intervals-input').value = track.intervals;
+                            div.querySelector('.track-velocity-slider').value = track.velocity;
+                            div.querySelector('.track-button.mute').classList.toggle('active', track.isMuted);
+                            div.querySelector('.track-button.solo').classList.toggle('active', track.isSolo);
+                        }
+                    });
+
+                    const humanizerBtn = document.getElementById('humanizerToggleBtn');
+                    const humanizerControls = document.getElementById('humanizerControls');
+                    humanizerBtn.classList.toggle('active', songData.humanizer.active);
+                    humanizerControls.classList.toggle('visible', songData.humanizer.active);
+                    document.getElementById('humanizerTimingSlider').value = songData.humanizer.timing;
+                    document.getElementById('humanizerVelocitySlider').value = songData.humanizer.velocity;
+                    
+                    const repeatBtn = document.getElementById('songMakerRepeatBtn');
+                    isSongMakerRepeatOn = songData.repeat || false;
+                    repeatBtn.textContent = isSongMakerRepeatOn ? 'Repeat On' : 'Repeat Off';
+                    repeatBtn.classList.toggle('active', isSongMakerRepeatOn);
+
+
+                    alert("Song loaded successfully!");
+                } catch (error) {
+                    alert("Failed to load song file. Error: " + error.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = null; // Reset file input
+        }
+
+        // --- MIDI Export ---
+function saveToMidiFile() {
+            const mainRootPitchClass = document.getElementById('rootNoteSelect').value;
+            const scalePalette = getFullScaleRange(mainRootPitchClass, document.getElementById('semistepsInput').value);
+            const trackDivs = Array.from(document.querySelectorAll('.song-maker-track'));
+
+            const mainRootNote = scalePalette.find(n => n.pitchClass === mainRootPitchClass && n.octave === 4) ||
+                                 scalePalette.find(n => n.pitchClass === mainRootPitchClass);
+
+            if (!mainRootNote) {
+                alert(`Master root note "${mainRootPitchClass}" not found for MIDI export.`);
+                return;
+            }
+            const mainRootNoteIndex = scalePalette.indexOf(mainRootNote);
+
+            let trackData = trackDivs.map((div, i) => ({
+                channel: i,
+                startingIntervals: div.querySelector('.track-roots-input').value.split(',').map(s => parseInt(s.trim(), 10)).filter(s => !isNaN(s)),
+                intervals: div.querySelector('.track-intervals-input').value.split(',').map(s => s.trim()),
+                isMuted: div.querySelector('.track-button.mute').classList.contains('active'),
+                isSolo: div.querySelector('.track-button.solo').classList.contains('active'),
+                baseVelocity: parseFloat(div.querySelector('.track-velocity-slider').value) * 127
+            }));
+
+            const isAnySolo = trackData.some(t => t.isSolo);
+            let activeTracks = isAnySolo ? trackData.filter(t => t.isSolo) : trackData.filter(t => !t.isMuted);
+            
+            const isHumanizerActive = document.getElementById('humanizerToggleBtn').classList.contains('active');
+            const timingVariation = isHumanizerActive ? parseInt(document.getElementById('humanizerTimingSlider').value, 10) : 0;
+            const velocityVariation = isHumanizerActive ? parseInt(document.getElementById('humanizerVelocitySlider').value, 10) : 0;
+
+            const ticksPerBeat = 480;
+            const bpm = parseInt(document.getElementById('tempoInput').value, 10);
+            const beatDurationTicks = ticksPerBeat;
+
+            let midiTracks = [];
+
+            activeTracks.forEach(track => {
+                let noteEvents = [];
+                let currentTimeTicks = 0;
+
+                track.startingIntervals.forEach(startInterval => {
+                    const startNoteIndex = mainRootNoteIndex + (startInterval - 1);
+                    const rootNoteData = scalePalette[startNoteIndex];
+
+                    if (!rootNoteData) return; // Skip if interval is out of bounds
+                    const rootNoteIndexInPalette = scalePalette.indexOf(rootNoteData);
+
+                    track.intervals.forEach(intervalStr => {
+                        let noteToPlay = null;
+                        let isHold = false;
+                        
+                        if (intervalStr === '-') {
+                           isHold = true;
+                        } else {
+                            const interval = parseInt(intervalStr, 10);
+                            if (!isNaN(interval) && interval !== 0) {
+                                const targetIndex = rootNoteIndexInPalette + (interval - (interval > 0 ? 1 : 0));
+                                if (targetIndex >= 0 && targetIndex < scalePalette.length) {
+                                    noteToPlay = scalePalette[targetIndex];
+                                }
+                            }
+                        }
+                        
+                        if (isHold && noteEvents.length > 0) {
+                           const lastEvent = noteEvents[noteEvents.length - 1];
+                           if(lastEvent.type === 'off') {
+                                const onEvent = noteEvents.find(e => e.type === 'on' && e.note === lastEvent.note && e.tick < lastEvent.tick);
+                                if(onEvent) {
+                                    lastEvent.tick += beatDurationTicks;
+                                }
+                           }
+                        } else if(noteToPlay) {
+                            let humanizedTick = currentTimeTicks;
+                            if(isHumanizerActive) {
+                                const timeOffsetRatio = (timingVariation / 100) * (Math.random() * 2 - 1);
+                                humanizedTick += Math.round(beatDurationTicks * timeOffsetRatio);
+                            }
+                             let humanizedVelocity = track.baseVelocity;
+                            if(isHumanizerActive) {
+                                const velOffset = Math.floor(velocityVariation * (Math.random() * 2 - 1) * (127/50));
+                                humanizedVelocity += velOffset;
+                            }
+                            humanizedVelocity = Math.max(1, Math.min(127, Math.round(humanizedVelocity)));
+
+                            noteEvents.push({ type: 'on', tick: humanizedTick, note: noteToPlay.midi, velocity: humanizedVelocity, channel: track.channel });
+                            noteEvents.push({ type: 'off', tick: humanizedTick + beatDurationTicks, note: noteToPlay.midi, channel: track.channel });
+                        }
+                        currentTimeTicks += beatDurationTicks;
+                    });
+                });
+                
+                if (noteEvents.length > 0) {
+                    midiTracks.push(noteEvents);
+                }
+            });
+
+            if (midiTracks.length === 0) {
+                alert("No notes to export.");
+                return;
+            }
+
+            // MIDI file writer logic... (this part is unchanged)
+            const writeStringToBytes = (str) => Array.from(str).map(c => c.charCodeAt(0));
+            const write32 = (n) => [(n >> 24) & 0xFF, (n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF];
+            const write16 = (n) => [(n >> 8) & 0xFF, n & 0xFF];
+            
+            const writeVariableLength = (n) => {
+                let buf = [n & 0x7F];
+                n >>= 7;
+                while (n > 0) {
+                    buf.unshift((n & 0x7F) | 0x80);
+                    n >>= 7;
+                }
+                return buf;
+            };
+
+            const header = [
+                ...writeStringToBytes('MThd'),
+                ...write32(6),
+                ...write16(1),
+                ...write16(midiTracks.length),
+                ...write16(ticksPerBeat)
+            ];
+
+            let allTrackBytes = [];
+            midiTracks.forEach((events, i) => {
+                events.sort((a, b) => a.tick - b.tick);
+                let trackBytes = [];
+                let lastTick = 0;
+                events.forEach(event => {
+                    const delta = event.tick - lastTick;
+                    trackBytes.push(...writeVariableLength(delta));
+                    let status = (event.type === 'on' ? 0x90 : 0x80) | event.channel;
+                    trackBytes.push(status, event.note, event.velocity || 0);
+                    lastTick = event.tick;
+                });
+                
+                trackBytes.push(...writeVariableLength(0));
+                trackBytes.push(0xFF, 0x2F, 0x00);
+                
+                const trackHeader = [
+                    ...writeStringToBytes('MTrk'),
+                    ...write32(trackBytes.length)
+                ];
+                allTrackBytes.push(...trackHeader, ...trackBytes);
+            });
+            
+            const midiBytes = new Uint8Array([...header, ...allTrackBytes]);
+            const blob = new Blob([midiBytes], { type: 'audio/midi' });
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'piano_song.mid';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
         
         function setupControls() {
-            populateDropdowns(); setupTetrachordControls();
-            const elements = { rootNoteSelect: 'rootNoteSelect', scaleSelect: 'scaleSelect', semistepsInput: 'semistepsInput', randomRootBtn: 'randomRootBtn', randomScaleBtn: 'randomScaleBtn', autoPlayBtn: 'autoPlayBtn', scaleSetToggleBtn: 'scaleSetToggleBtn', toggle88KeysBtn: 'toggle88KeysBtn', exportScalesBtn: 'exportScalesBtn', importScalesBtn: 'importScalesBtn', scalesFileInput: 'scalesFileInput', exportSoundsBtn: 'exportSoundsBtn', importSoundsBtn: 'importSoundsBtn', soundsFileInput: 'soundsFileInput', midiOutToggleBtn: 'midiOutToggleBtn', midiOutSelect: 'midiOutSelect', midiInToggleBtn: 'midiInToggleBtn', midiInSelect: 'midiInSelect', loadSampleBtn: 'loadSampleBtn', sampleFileInput: 'sampleFileInput', volumeSlider: 'volumeSlider', tempoSlider: 'tempoSlider', tempoInput: 'tempoInput', reverbToggleBtn: 'reverbToggleBtn', reverbMixSlider: 'reverbMixSlider', delayToggleBtn: 'delayToggleBtn', delayMixSlider: 'delayMixSlider', delayTimeSlider: 'delayTimeSlider', delayFeedbackSlider: 'delayFeedbackSlider' };
+            populateDropdowns(); setupTetrachordControls(); setupSongMakerControls();
+            const elements = { rootNoteSelect: 'rootNoteSelect', scaleSelect: 'scaleSelect', semistepsInput: 'semistepsInput', randomRootBtn: 'randomRootBtn', randomScaleBtn: 'randomScaleBtn', autoPlayBtn: 'autoPlayBtn', scaleSetToggleBtn: 'scaleSetToggleBtn', toggle88KeysBtn: 'toggle88KeysBtn', exportScalesBtn: 'exportScalesBtn', importScalesBtn: 'importScalesBtn', scalesFileInput: 'scalesFileInput', exportSoundsBtn: 'exportSoundsBtn', importSoundsBtn: 'importSoundsBtn', soundsFileInput: 'soundsFileInput', midiOutToggleBtn: 'midiOutToggleBtn', midiOutSelect: 'midiOutSelect', midiInToggleBtn: 'midiInToggleBtn', midiInSelect: 'midiInSelect', loadSampleBtn: 'loadSampleBtn', sampleFileInput: 'sampleFileInput', volumeSlider: 'volumeSlider', tempoSlider: 'tempoSlider', tempoInput: 'tempoInput', reverbToggleBtn: 'reverbToggleBtn', reverbMixSlider: 'reverbMixSlider', delayToggleBtn: 'delayToggleBtn', delayMixSlider: 'delayMixSlider', delayTimeSlider: 'delayTimeSlider', delayFeedbackSlider: 'delayFeedbackSlider', songMakerPlayBtn: 'songMakerPlayBtn', songMakerRepeatBtn: 'songMakerRepeatBtn' };
             for(let key in elements) { elements[key] = document.getElementById(elements[key]); }
 
             elements.rootNoteSelect.addEventListener('change', applyScaleFilter);
@@ -600,6 +1160,12 @@
             elements.midiOutToggleBtn.addEventListener('click', initMidiOut); elements.midiOutSelect.addEventListener('change', (event) => { if (midiAccess && event.target.value) { currentMidiOutput = midiAccess.outputs.get(event.target.value); } else { currentMidiOutput = null; } });
             elements.midiInToggleBtn.addEventListener('click', initMidiIn); elements.midiInSelect.addEventListener('change', (event) => setMidiInputDevice(event.target.value));
             elements.volumeSlider.addEventListener('input', (event) => { if (masterVolumeNode) masterVolumeNode.gain.value = parseFloat(event.target.value); });
+            elements.songMakerPlayBtn.addEventListener('click', toggleSongMaker);
+            elements.songMakerRepeatBtn.addEventListener('click', () => {
+                isSongMakerRepeatOn = !isSongMakerRepeatOn;
+                elements.songMakerRepeatBtn.textContent = isSongMakerRepeatOn ? 'Repeat On' : 'Repeat Off';
+                elements.songMakerRepeatBtn.classList.toggle('active', isSongMakerRepeatOn);
+            });
             
             function syncTempo(sourceValue) { const bpm = parseInt(sourceValue, 10); if (isNaN(bpm)) return; elements.tempoSlider.value = bpm; elements.tempoInput.value = bpm; effectiveBaseTempoMs = 60000 / bpm; }
             elements.tempoSlider.addEventListener('input', (event) => syncTempo(event.target.value));
