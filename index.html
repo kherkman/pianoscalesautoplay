@@ -404,7 +404,7 @@
                 <div class="control-group"><label>Sounds IO:</label><div><button id="exportSoundsBtn">Export</button><button id="importSoundsBtn">Import</button><input type="file" id="soundsFileInput" accept=".json" style="display: none;"></div></div>
                 <div class="control-group control-group-horizontal"><label for="zoomSlider">Zoom:</label><input type="range" id="zoomSlider" min="0.3" max="1.5" step="0.05" value="1"></div>
                 <div class="control-group"><label>Keyboard:</label><button id="toggle88KeysBtn">88 Keys</button></div>
-                <div class="control-group"><label>Scale Set:</label><button id="scaleSetToggleBtn">Zeitler</button></div>
+                <div class="control-group"><label>Scale Set:</label><div><button id="scaleSetToggleBtn">Zeitler</button><button id="loadJsScalesBtn">Load All Scales</button></div></div>
             </div>
         </div>
 
@@ -445,6 +445,7 @@
                 <div class="song-maker-master-controls">
                     <button id="songMakerPlayBtn" class="chord-button" style="background-color: #3f51b5;">Play Song</button>
                     <button id="songMakerRepeatBtn">Repeat Off</button>
+                    <button id="songMakerRandomBtn">Random</button>
                     <div class="control-group control-group-horizontal">
                         <label for="songMakerTrackCount">Tracks:</label>
                         <input type="number" id="songMakerTrackCount" value="2" min="1" max="16" style="width: 50px;">
@@ -489,6 +490,7 @@
         <br>Play with computer keyboard (Z/X/C and Q/W/E rows) or a MIDI device.
     </p>
 
+    <script src="12EDOscaleList.js"></script>
     <script>
         // --- GLOBAL VARIABLES ---
         let audioContext;
@@ -874,6 +876,37 @@ function playSongMaker() {
              container.querySelectorAll('.track-button.mute').forEach(btn => btn.addEventListener('click', () => btn.classList.toggle('active')));
         }
         
+        function generateRandomSongData() {
+            const tracks = document.querySelectorAll('.song-maker-track');
+            tracks.forEach(track => {
+                const rootsInput = track.querySelector('.track-roots-input');
+                const intervalsInput = track.querySelector('.track-intervals-input');
+
+                // Generate random starting intervals
+                const numRoots = Math.floor(Math.random() * 3) + 1; // 1 to 3 roots
+                let roots = [];
+                for (let i = 0; i < numRoots; i++) {
+                    roots.push(Math.floor(Math.random() * 15) - 7); // -7 to 7
+                }
+                rootsInput.value = roots.join(', ');
+
+                // Generate random scale intervals
+                const numIntervals = Math.floor(Math.random() * 9) + 8; // 8 to 16 intervals
+                let intervals = [];
+                for (let i = 0; i < numIntervals; i++) {
+                    const rand = Math.random();
+                    if (rand < 0.75) { // 75% chance for a note
+                        intervals.push(Math.floor(Math.random() * 8) + 1); // 1 to 8
+                    } else if (rand < 0.9) { // 15% chance for a pause
+                        intervals.push('0');
+                    } else { // 10% chance for a hold
+                        intervals.push('-');
+                    }
+                }
+                intervalsInput.value = intervals.join(', ');
+            });
+        }
+
         function setupSongMakerControls() {
             const trackCountInput = document.getElementById('songMakerTrackCount');
             trackCountInput.addEventListener('change', () => {
@@ -892,6 +925,8 @@ function playSongMaker() {
             document.getElementById('loadSongBtn').addEventListener('click', () => document.getElementById('songFileInput').click());
             document.getElementById('songFileInput').addEventListener('change', loadSongFromFile);
             document.getElementById('saveMidiBtn').addEventListener('click', saveToMidiFile);
+            document.getElementById('songMakerRandomBtn').addEventListener('click', generateRandomSongData);
+
 
             generateSongMakerTracks(parseInt(trackCountInput.value, 10)); // Initial tracks
         }
@@ -1145,7 +1180,7 @@ function saveToMidiFile() {
         
         function setupControls() {
             populateDropdowns(); setupTetrachordControls(); setupSongMakerControls();
-            const elements = { rootNoteSelect: 'rootNoteSelect', scaleSelect: 'scaleSelect', semistepsInput: 'semistepsInput', randomRootBtn: 'randomRootBtn', randomScaleBtn: 'randomScaleBtn', autoPlayBtn: 'autoPlayBtn', scaleSetToggleBtn: 'scaleSetToggleBtn', toggle88KeysBtn: 'toggle88KeysBtn', exportScalesBtn: 'exportScalesBtn', importScalesBtn: 'importScalesBtn', scalesFileInput: 'scalesFileInput', exportSoundsBtn: 'exportSoundsBtn', importSoundsBtn: 'importSoundsBtn', soundsFileInput: 'soundsFileInput', midiOutToggleBtn: 'midiOutToggleBtn', midiOutSelect: 'midiOutSelect', midiInToggleBtn: 'midiInToggleBtn', midiInSelect: 'midiInSelect', loadSampleBtn: 'loadSampleBtn', sampleFileInput: 'sampleFileInput', volumeSlider: 'volumeSlider', tempoSlider: 'tempoSlider', tempoInput: 'tempoInput', reverbToggleBtn: 'reverbToggleBtn', reverbMixSlider: 'reverbMixSlider', delayToggleBtn: 'delayToggleBtn', delayMixSlider: 'delayMixSlider', delayTimeSlider: 'delayTimeSlider', delayFeedbackSlider: 'delayFeedbackSlider', songMakerPlayBtn: 'songMakerPlayBtn', songMakerRepeatBtn: 'songMakerRepeatBtn' };
+            const elements = { rootNoteSelect: 'rootNoteSelect', scaleSelect: 'scaleSelect', semistepsInput: 'semistepsInput', randomRootBtn: 'randomRootBtn', randomScaleBtn: 'randomScaleBtn', autoPlayBtn: 'autoPlayBtn', scaleSetToggleBtn: 'scaleSetToggleBtn', loadJsScalesBtn: 'loadJsScalesBtn', toggle88KeysBtn: 'toggle88KeysBtn', exportScalesBtn: 'exportScalesBtn', importScalesBtn: 'importScalesBtn', scalesFileInput: 'scalesFileInput', exportSoundsBtn: 'exportSoundsBtn', importSoundsBtn: 'importSoundsBtn', soundsFileInput: 'soundsFileInput', midiOutToggleBtn: 'midiOutToggleBtn', midiOutSelect: 'midiOutSelect', midiInToggleBtn: 'midiInToggleBtn', midiInSelect: 'midiInSelect', loadSampleBtn: 'loadSampleBtn', sampleFileInput: 'sampleFileInput', volumeSlider: 'volumeSlider', tempoSlider: 'tempoSlider', tempoInput: 'tempoInput', reverbToggleBtn: 'reverbToggleBtn', reverbMixSlider: 'reverbMixSlider', delayToggleBtn: 'delayToggleBtn', delayMixSlider: 'delayMixSlider', delayTimeSlider: 'delayTimeSlider', delayFeedbackSlider: 'delayFeedbackSlider', songMakerPlayBtn: 'songMakerPlayBtn', songMakerRepeatBtn: 'songMakerRepeatBtn' };
             for(let key in elements) { elements[key] = document.getElementById(elements[key]); }
 
             elements.rootNoteSelect.addEventListener('change', applyScaleFilter);
@@ -1153,7 +1188,10 @@ function saveToMidiFile() {
             elements.semistepsInput.addEventListener('input', () => { const matchedScale = PREDEFINED_SCALES.find(s => s.steps === elements.semistepsInput.value); if (matchedScale) { elements.scaleSelect.value = matchedScale.steps; } else { for (let i = 0; i < elements.scaleSelect.options.length; i++) { if (elements.scaleSelect.options[i].text === "Custom") { elements.scaleSelect.selectedIndex = i; break;}}} applyScaleFilter(); });
             elements.randomRootBtn.addEventListener('click', () => { elements.rootNoteSelect.value = ALL_NOTES_CHROMATIC[Math.floor(Math.random() * ALL_NOTES_CHROMATIC.length)]; applyScaleFilter(); });
             elements.randomScaleBtn.addEventListener('click', () => { const actualScales = PREDEFINED_SCALES.filter(s => s.name !== "Custom" || s.steps !== ""); const randomIdx = Math.floor(Math.random() * actualScales.length); elements.scaleSelect.value = actualScales[randomIdx].steps; elements.semistepsInput.value = actualScales[randomIdx].steps; applyScaleFilter(); });
-            elements.autoPlayBtn.addEventListener('click', toggleAutoPlay); elements.scaleSetToggleBtn.addEventListener('click', toggleScaleSet); elements.toggle88KeysBtn.addEventListener('click', toggle88Keys);
+            elements.autoPlayBtn.addEventListener('click', toggleAutoPlay); 
+            elements.scaleSetToggleBtn.addEventListener('click', toggleScaleSet);
+            elements.loadJsScalesBtn.addEventListener('click', loadScalesFromJs);
+            elements.toggle88KeysBtn.addEventListener('click', toggle88Keys);
             elements.exportScalesBtn.addEventListener('click', exportScales); elements.importScalesBtn.addEventListener('click', importScales); elements.scalesFileInput.addEventListener('change', handleScaleFileImport);
             elements.exportSoundsBtn.addEventListener('click', exportSounds); elements.importSoundsBtn.addEventListener('click', importSounds); elements.soundsFileInput.addEventListener('change', handleSoundFileImport);
             elements.loadSampleBtn.addEventListener('click', loadSample); elements.sampleFileInput.addEventListener('change', handleSampleFileImport);
@@ -1181,6 +1219,36 @@ function saveToMidiFile() {
             elements.delayFeedbackSlider.addEventListener('input', (e) => { if (isDelayOn && delayFeedbackGain) delayFeedbackGain.gain.value = parseFloat(e.target.value); });
         }
         
+        function loadScalesFromJs() {
+            if (typeof scalesList === 'undefined' || !Array.isArray(scalesList)) {
+                alert("scalesList.js is not loaded or the variable is not an array.");
+                return;
+            }
+
+            // Convert the format from scalesList.js to the application's format
+            const convertedScales = scalesList.map(scale => ({
+                name: scale.name,
+                steps: Array.isArray(scale.steps) ? scale.steps.join('') : scale.steps
+            }));
+
+            // Add a "Custom" option for manual entry
+            convertedScales.push({ name: "Custom", steps: "" });
+            
+            // Replace the internal scale list and disable the toggle button
+            PREDEFINED_SCALES = convertedScales;
+            document.getElementById('scaleSetToggleBtn').disabled = true;
+
+            // Repopulate dropdown and update the UI
+            populateScaleDropdowns();
+            const scaleSelect = document.getElementById('scaleSelect');
+            if (scaleSelect.options.length > 0) {
+                scaleSelect.selectedIndex = 0;
+                document.getElementById('semistepsInput').value = scaleSelect.value;
+            }
+            applyScaleFilter();
+            alert(`Loaded ${convertedScales.length -1} scales successfully!`);
+        }
+
         function handleKeyDown(e) { if (e.repeat || document.activeElement.tagName === 'INPUT') return; const noteName = KEYBOARD_MAP[e.key.toLowerCase()]; if (noteName && !activeComputerKeys.has(noteName)) { const keyData = keysData.find(k => k.note === noteName); if (keyData) { const keyElement = document.getElementById('key' + keyData.idSuffix); if (keyElement && !keyElement.classList.contains('key-disabled')) { if (!initAudioContext()) return; userHeldNotes.add(keyData.midi); updateChordDisplay(); playNote(keyData.frequency, 1, keyData.midi, false); keyElement.classList.add('pressed'); activeComputerKeys.add(noteName); } } } }
         function handleKeyUp(e) { const noteName = KEYBOARD_MAP[e.key.toLowerCase()]; if (noteName) { const keyData = keysData.find(k => k.note === noteName); if (keyData) { userHeldNotes.delete(keyData.midi); updateChordDisplay(); const keyElement = document.getElementById('key' + keyData.idSuffix); if (keyElement) keyElement.classList.remove('pressed'); } activeComputerKeys.delete(noteName); } }
 
