@@ -41,6 +41,8 @@
     
     let midiAccess = null, currentMidiOutput = null, isMidiOutEnabled = false, currentMidiInput = null, isMidiInEnabled = false;
     const activeMidiNotes = new Map(), activeComputerKeys = new Set(), userHeldNotes = new Set();
+    const globalActiveMidiNotes = new Set(); // Tracks active auto-play and generative notes for UI highlighting
+    
     const MIDI_BASE_VELOCITY = 80, MIDI_VELOCITY_VARIATION_RANGE = 30;
     const KEYBOARD_MAP = { 'z': 'C4', 's': 'C#4', 'x': 'D4', 'd': 'D#4', 'c': 'E4', 'v': 'F4', 'g': 'F#4', 'b': 'G4', 'h': 'G#4', 'n': 'A4', 'j': 'A#4', 'm': 'B4', 'q': 'C5', '2': 'C#5', 'w': 'D5', '3': 'D#5', 'e': 'E5', 'r': 'F5', '5': 'F#5', 't': 'G5', '6': 'G#5', 'y': 'A5', '7': 'A#5', 'u': 'B5' };
     
@@ -62,8 +64,7 @@
     
     // --- DATA DEFINITIONS ---
 
-        const BASIC_SCALES = [ { name: "Ionian (Major)", steps: "2212221" }, { name: "Dorian", steps: "2122212" }, { name: "Phrygian", steps: "1222122" }, { name: "Lydian", steps: "2221221" }, { name: "Mixolydian", steps: "2212212" }, { name: "Aeolian (Nat. Minor)", steps: "2122122" }, { name: "Locrian", steps: "1221222" }, { name: "Harmonic Minor", steps: "2122131" }, { name: "Melodic Minor (Asc.)", steps: "2122221" }, { name: "Major Pentatonic", steps: "22323" }, { name: "Minor Pentatonic", steps: "32232" }, { name: "Blues", steps: "321132" }, { name: "Chromatic", steps: "111111111111"}, { name: "Whole Tone", steps: "222222"}, { name: "Diminished (WH)", steps: "21212121"}, { name: "Diminished (HW)", steps: "12121212"}, { name: "Custom", steps: ""} ];
-      //  const ZEITLER_SCALES = [ { "name": "Custom", "steps": "" } ];
+    const BASIC_SCALES = [ { name: "Ionian (Major)", steps: "2212221" }, { name: "Dorian", steps: "2122212" }, { name: "Phrygian", steps: "1222122" }, { name: "Lydian", steps: "2221221" }, { name: "Mixolydian", steps: "2212212" }, { name: "Aeolian (Nat. Minor)", steps: "2122122" }, { name: "Locrian", steps: "1221222" }, { name: "Harmonic Minor", steps: "2122131" }, { name: "Melodic Minor (Asc.)", steps: "2122221" }, { name: "Major Pentatonic", steps: "22323" }, { name: "Minor Pentatonic", steps: "32232" }, { name: "Blues", steps: "321132" }, { name: "Chromatic", steps: "111111111111"}, { name: "Whole Tone", steps: "222222"}, { name: "Diminished (WH)", steps: "21212121"}, { name: "Diminished (HW)", steps: "12121212"}, { name: "Custom", steps: ""} ];
     
     let PREDEFINED_SCALES = BASIC_SCALES;
     let isZeitlerSetCurrent = false;
@@ -173,6 +174,14 @@
             audioContext.resume().catch(err => console.error("Error resuming AudioContext:", err));
         } 
         return true; 
+    }
+
+    // Helper to push highlighted notes to SheetMusic Canvas
+    function updateSheetMusicHighlight() {
+        if (window.SheetMusic) {
+            const combined = new Set([...userHeldNotes, ...globalActiveMidiNotes]);
+            window.SheetMusic.highlightNotes(combined);
+        }
     }
     
     function playNote(baseFrequency, gainScale = 1, midiNoteNum = null, isAutoPlayed = false) { 
@@ -382,7 +391,8 @@
                 const freq = parseFloat(keyElement.dataset.frequency); 
                 const midi = parseInt(keyElement.dataset.midi); 
                 userHeldNotes.add(midi); 
-                updateChordDisplay(); 
+                updateChordDisplay();
+                updateSheetMusicHighlight();
                 
                 if (audioContext.state === 'suspended') { 
                     audioContext.resume().then(() => { playNote(freq, 1, midi, false); }); 
@@ -395,7 +405,8 @@
             const handleRelease = () => { 
                 const midi = parseInt(keyElement.dataset.midi); 
                 userHeldNotes.delete(midi); 
-                updateChordDisplay(); 
+                updateChordDisplay();
+                updateSheetMusicHighlight();
                 keyElement.classList.remove('pressed'); 
                 if (isMidiOutEnabled) { sendMidiNoteOff(midi); } 
             }; 
@@ -835,6 +846,7 @@
         if(playingNotesDisplay) playingNotesDisplay.innerHTML = ''; 
         lastAutoPlayedChordKeyElements.forEach(el => el.classList.remove('auto-playing-note')); 
         lastAutoPlayedChordKeyElements = []; 
+        globalActiveMidiNotes.clear(); // Clear tracking for next beat
         
         if (currentMelody.length === 0) { console.warn("Current melody empty."); stopAutoPlay(); return; } 
         const currentBeatData = currentMelody[currentMelodyNoteIndex]; 
@@ -940,6 +952,8 @@
         notesToPlayOnThisBeat.forEach(item => { 
             playNote(item.noteData.frequency, item.gain, item.noteData.midi, true); 
             notesPlayedMidi.push(item.noteData.midi); 
+            globalActiveMidiNotes.add(item.noteData.midi);
+
             const keyDataToHighlight = keysData.find(kd => kd.note === item.noteData.note); 
             if (keyDataToHighlight) { 
                 const domElement = document.getElementById('key' + keyDataToHighlight.idSuffix); 
@@ -950,6 +964,8 @@
             } 
         }); 
         
+        updateSheetMusicHighlight();
+
         if(playingNotesDisplay) { 
             const uniqueDisplayNotes = [...new Set(notesPlayedMidi.map(midi => (keysData.find(k => k.midi === midi) || {}).note).filter(Boolean))]; 
             uniqueDisplayNotes.sort().forEach(noteName => { 
@@ -1137,6 +1153,9 @@
         activeMidiNotes.forEach(timeoutId => clearTimeout(timeoutId)); 
         activeMidiNotes.clear(); 
         
+        globalActiveMidiNotes.clear();
+        updateSheetMusicHighlight();
+
         const playingNotesDisplay = document.getElementById('currentlyPlayingNotesDisplay'); 
         if(playingNotesDisplay) playingNotesDisplay.innerHTML = ''; 
         document.querySelectorAll('.song-maker-master-controls button, .song-maker-master-controls input').forEach(el => el.disabled = false); 
@@ -1165,6 +1184,9 @@
         songMakerPlaybackTimeouts.forEach(clearTimeout);
         songMakerPlaybackTimeouts = [];
         document.querySelectorAll('.key.auto-playing-note').forEach(k => k.classList.remove('auto-playing-note'));
+        
+        globalActiveMidiNotes.clear();
+        updateSheetMusicHighlight();
 
         if (resetButtonUI) {
             const playBtn = document.getElementById('songMakerPlayBtn');
@@ -1301,10 +1323,17 @@
             const timeoutId = setTimeout(() => {
                 if (!isSongMakerPlaying) return;
                 playNote(event.note.frequency, event.velocity, event.note.midi, true);
+                globalActiveMidiNotes.add(event.note.midi);
+                updateSheetMusicHighlight();
+
                 const keyElement = document.getElementById('key' + event.note.idSuffix);
                 if (keyElement) {
                     keyElement.classList.add('auto-playing-note');
-                    const highlightTimeout = setTimeout(() => keyElement.classList.remove('auto-playing-note'), effectiveBaseTempoMs * 0.9);
+                    const highlightTimeout = setTimeout(() => {
+                        keyElement.classList.remove('auto-playing-note');
+                        globalActiveMidiNotes.delete(event.note.midi);
+                        updateSheetMusicHighlight();
+                    }, effectiveBaseTempoMs * 0.9);
                     songMakerPlaybackTimeouts.push(highlightTimeout);
                 }
             }, event.time);
@@ -1319,6 +1348,8 @@
                 if (isSongMakerRepeatOn) {
                     document.querySelectorAll('.key.auto-playing-note').forEach(k => k.classList.remove('auto-playing-note'));
                     songMakerPlaybackTimeouts = [];
+                    globalActiveMidiNotes.clear();
+                    updateSheetMusicHighlight();
                     playSongMaker(); // Loop
                 } else {
                     stopSongMaker();
@@ -1378,6 +1409,57 @@
             noteEl.textContent = noteName; 
             scaleNotesDisplay.appendChild(noteEl); 
         }); 
+
+        // Enharmonic Conversion Display
+        const enharmonicNotesDisplay = document.getElementById('enharmonicNotesDisplay');
+        let enharmonicSpelling = [];
+        if (enharmonicNotesDisplay) {
+            enharmonicNotesDisplay.innerHTML = '';
+            if (typeof window.getOptimalEnharmonicSpelling === 'function') {
+                enharmonicSpelling = window.getOptimalEnharmonicSpelling(rootNote, semisteps);
+                enharmonicSpelling.forEach(noteStr => {
+                    const noteEl = document.createElement('span');
+                    noteEl.classList.add('scale-note-item');
+                    noteEl.textContent = noteStr;
+                    enharmonicNotesDisplay.appendChild(noteEl);
+                });
+            } else {
+                enharmonicNotesDisplay.textContent = 'EnharmonicConversion.js not loaded.';
+            }
+        }
+
+        // --- NEW: SheetMusic Canvas Multi-Octave Array Builder ---
+        if (window.SheetMusic && typeof window.getOptimalEnharmonicSpelling === 'function') {
+            const sheetMusicNotes = [];
+            const scaleLength = enharmonicSpelling.length;
+            const pitchClassToEnharmonic = {};
+            
+            // Validate that we have a valid 7-note spelling, otherwise fallback
+            if (scaleLength > 0 && !enharmonicSpelling[0].includes("N/A")) {
+                for(let i = 0; i < notesWithIntervals.length && i < scaleLength; i++) {
+                    pitchClassToEnharmonic[notesWithIntervals[i].pitchClass] = enharmonicSpelling[i];
+                }
+            }
+
+            keysData.forEach(key => {
+                const isPitchClassInScale = notesWithIntervals.some(sci => sci.pitchClass === key.pitchClass);
+                if (isPitchClassInScale) {
+                    let spelling = pitchClassToEnharmonic[key.pitchClass] || key.pitchClass;
+                    let letter = spelling.charAt(0);
+                    // Standardize accidental characters for SheetMusic canvas
+                    let accidental = spelling.substring(1).replace('♯', '#').replace('♭', 'b').replace('𝄫', 'bb').replace('𝄪', 'x'); 
+                    
+                    sheetMusicNotes.push({
+                        letter: letter,
+                        accidental: accidental,
+                        octave: key.octave,
+                        midi: key.midi
+                    });
+                }
+            });
+            
+            window.SheetMusic.drawScale(sheetMusicNotes);
+        }
         
         const chordButtonsDisplay = document.getElementById('chordButtonsDisplay'); 
         chordButtonsDisplay.innerHTML = ''; 
@@ -1398,16 +1480,24 @@
         if (!initAudioContext()) return; 
         clearTimeout(activeChordHighlightTimeout); 
         document.querySelectorAll('.key.chord-note-active').forEach(k => k.classList.remove('chord-note-active')); 
+        globalActiveMidiNotes.clear();
+
         chordNoteNames.forEach(noteName => { 
             const keyToPlay = keysData.find(kd => kd.note === noteName); 
             if (keyToPlay && keyToPlay.frequency) { 
                 playNote(keyToPlay.frequency, 1, keyToPlay.midi, false); 
+                globalActiveMidiNotes.add(keyToPlay.midi);
                 const keyElement = document.getElementById('key' + keyToPlay.idSuffix); 
                 if (keyElement) keyElement.classList.add('chord-note-active'); 
             } 
         }); 
+        
+        updateSheetMusicHighlight();
+
         activeChordHighlightTimeout = setTimeout(() => { 
             document.querySelectorAll('.key.chord-note-active').forEach(k => k.classList.remove('chord-note-active')); 
+            globalActiveMidiNotes.clear();
+            updateSheetMusicHighlight();
         }, 1000); 
     }
 
@@ -1559,13 +1649,15 @@
         if (command === 9 && velocity > 0) { 
             if (!initAudioContext()) return; 
             userHeldNotes.add(noteNumber); 
-            updateChordDisplay(); 
+            updateChordDisplay();
+            updateSheetMusicHighlight();
             const gainScale = velocity / 127; 
             playNote(keyData.frequency, gainScale, keyData.midi, false); 
             if (keyElement) keyElement.classList.add('pressed'); 
         } else if (command === 8 || (command === 9 && velocity === 0)) { 
             userHeldNotes.delete(noteNumber); 
             updateChordDisplay(); 
+            updateSheetMusicHighlight();
             if (keyElement) keyElement.classList.remove('pressed'); 
         } 
     }
@@ -1667,7 +1759,6 @@
     // --- UI INITIALIZATION & EVENT LISTENERS ---
     async function loadDefaultWavSamples() {
         let loadedSomething = false;
-        // Iterate backwards so PianoC4 is added last and thus appears first in the dropdown.
         for (const soundInfo of [...DEFAULT_WAV_SAMPLES].reverse()) {
             try {
                 const response = await fetch(soundInfo.file);
@@ -1676,7 +1767,6 @@
                     continue;
                 }
                 const arrayBuffer = await response.arrayBuffer();
-                // Use a promise-based wrapper for the callback API
                 const decodedBuffer = await new Promise((resolve, reject) => {
                     audioContext.decodeAudioData(arrayBuffer, resolve, reject);
                 });
@@ -1697,7 +1787,6 @@
 
         if (loadedSomething) {
             populateSoundSelect();
-            // Set PianoC4 as default if it was loaded
             const pianoC4Id = `wav_pianoc4`;
             if (loadedSampleBuffers.has(pianoC4Id)) {
                 document.getElementById('soundTypeSelect').value = pianoC4Id;
@@ -1790,10 +1879,8 @@
         const scaleSelect = document.getElementById('scaleSelect'); 
         const semistepsInput = document.getElementById('semistepsInput'); 
         
-        // Grab the data from the imported JS file
         if (!isZeitlerLoaded && typeof ZEITLER_SCALES_DATA !== 'undefined') {
             ZEITLER_SCALES = ZEITLER_SCALES_DATA;
-            // Ensure the 'Custom' blank scale is always an option at the bottom
             if (!ZEITLER_SCALES.some(s => s.name === "Custom")) {
                 ZEITLER_SCALES.push({ name: "Custom", steps: "" });
             }
@@ -2211,7 +2298,7 @@
         URL.revokeObjectURL(url);
     }
     
-    // Sync Tempo helper used by File loading and setupControls
+    // Sync Tempo helper
     function syncTempo(sourceValue) { 
         const bpm = parseInt(sourceValue, 10); 
         if (isNaN(bpm)) return; 
@@ -2296,6 +2383,7 @@
                     if (!initAudioContext()) return; 
                     userHeldNotes.add(keyData.midi); 
                     updateChordDisplay(); 
+                    updateSheetMusicHighlight();
                     playNote(keyData.frequency, 1, keyData.midi, false); 
                     keyElement.classList.add('pressed'); 
                     activeComputerKeys.add(noteName); 
@@ -2310,7 +2398,8 @@
             const keyData = keysData.find(k => k.note === noteName); 
             if (keyData) { 
                 userHeldNotes.delete(keyData.midi); 
-                updateChordDisplay(); 
+                updateChordDisplay();
+                updateSheetMusicHighlight();
                 const keyElement = document.getElementById('key' + keyData.idSuffix); 
                 if (keyElement) keyElement.classList.remove('pressed'); 
             } 
@@ -2402,6 +2491,7 @@
     document.body.addEventListener('keydown', unlockAudioEvent, true);
 
     document.addEventListener('DOMContentLoaded', () => {
+        if (window.SheetMusic) window.SheetMusic.init('sheetMusicCanvas');
         generateKeysData();
         createPianoKeys(); 
         setupControls(); 
