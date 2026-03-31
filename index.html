@@ -51,7 +51,7 @@
             </div>
         </div>
 
-        <!-- NEW: Scale Detection Section -->
+        <!-- Scale Detection Section -->
         <div class="draggable-section" data-section-id="scaledetect">
             <div class="section-header" draggable="true">
                 <h3>Scale Detection</h3>
@@ -91,8 +91,23 @@
             <div class="section-content info-displays-content">
                 <div class="info-block"><h4 class="info-block-header">Chord Inspector:</h4><div id="chordNameDisplay" class="scale-note-item">--</div></div>
                 <div class="info-block"><h4 class="info-block-header">Scale Notes (1 Octave):</h4><div id="scaleNotesDisplay"></div></div>
+                <!-- Enharmonic Conversion Display -->
+                <div class="info-block"><h4 class="info-block-header">Enharmonic Conversion for Sheet Music (1 Octave):</h4><div id="enharmonicNotesDisplay"></div></div>
                 <div class="info-block"><h4 class="info-block-header">Diatonic Triads:</h4><div id="chordButtonsDisplay"></div></div>
                 <div class="info-block"><h4 class="info-block-header">Currently Playing (Auto):</h4><div id="currentlyPlayingNotesDisplay"></div></div>
+            </div>
+        </div>
+        
+        <!-- NEW: Sheet Music Section -->
+        <div class="draggable-section" data-section-id="sheetmusic">
+            <div class="section-header" draggable="true">
+                <h3>Sheet Music</h3>
+                <button class="toggle-btn">-</button>
+            </div>
+            <div class="section-content">
+                <div class="sheet-music-container">
+                    <canvas id="sheetMusicCanvas" width="900" height="250"></canvas>
+                </div>
             </div>
         </div>
         
@@ -153,6 +168,8 @@
     <!-- External Scripts -->
     <script src="12EDOscaleList.js"></script>
     <script src="zeitler_all_the_scales.js"></script>
+    <script src="EnharmonicConversion.js"></script> <!-- Included the new conversion script -->
+    <script src="SheetMusic.js"></script> <!-- NEW: Sheet Music renderer -->
     <script src="main.js"></script>
     <script src="scaleDetection.js"></script>
 </body>
