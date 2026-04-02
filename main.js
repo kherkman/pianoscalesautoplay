@@ -617,6 +617,7 @@
             isMuted: div.querySelector('.track-button.mute').classList.contains('active'),
             isSolo: div.querySelector('.track-button.solo').classList.contains('active'),
             velocity: parseFloat(div.querySelector('.track-velocity-slider').value),
+            octaveOffset: parseInt(div.querySelector('.track-octave-input').value, 10) || 0,
             element: div
         }));
 
@@ -662,7 +663,19 @@
                             if (interval !== 0) { 
                                 const targetIndex = rootNoteIndexInPalette + (interval - (interval > 0 ? 1 : 0));
                                 if (targetIndex >= 0 && targetIndex < scalePalette.length) {
-                                    noteToPlay = scalePalette[targetIndex];
+                                    let baseNote = scalePalette[targetIndex];
+                                    let targetMidi = baseNote.midi + (track.octaveOffset * 12);
+                                    let actualKey = keysData.find(k => k.midi === targetMidi);
+                                    
+                                    if (actualKey) {
+                                        noteToPlay = actualKey;
+                                    } else {
+                                        noteToPlay = {
+                                            midi: Math.max(0, Math.min(127, targetMidi)),
+                                            frequency: baseNote.frequency * Math.pow(2, track.octaveOffset),
+                                            idSuffix: null
+                                        };
+                                    }
                                 } else {
                                     console.warn(`Interval ${interval} from start interval ${startInterval} is out of range.`);
                                 }
@@ -706,15 +719,24 @@
                 globalActiveMidiNotes.add(event.note.midi);
                 updateSheetMusicHighlight();
 
-                const keyElement = document.getElementById('key' + event.note.idSuffix);
-                if (keyElement) {
-                    keyElement.classList.add('auto-playing-note');
-                    const highlightTimeout = setTimeout(() => {
-                        keyElement.classList.remove('auto-playing-note');
+                if (event.note.idSuffix) {
+                    const keyElement = document.getElementById('key' + event.note.idSuffix);
+                    if (keyElement) {
+                        keyElement.classList.add('auto-playing-note');
+                        const highlightTimeout = setTimeout(() => {
+                            keyElement.classList.remove('auto-playing-note');
+                            globalActiveMidiNotes.delete(event.note.midi);
+                            updateSheetMusicHighlight();
+                        }, effectiveBaseTempoMs * 0.9);
+                        songMakerPlaybackTimeouts.push(highlightTimeout);
+                    }
+                } else {
+                    // Fallback cleanup for un-highlightable synthetic notes
+                    const unhighlightTimeout = setTimeout(() => {
                         globalActiveMidiNotes.delete(event.note.midi);
                         updateSheetMusicHighlight();
                     }, effectiveBaseTempoMs * 0.9);
-                    songMakerPlaybackTimeouts.push(highlightTimeout);
+                    songMakerPlaybackTimeouts.push(unhighlightTimeout);
                 }
             }, event.time);
             songMakerPlaybackTimeouts.push(timeoutId);
@@ -1370,6 +1392,9 @@
                     <span class="track-title">Track ${i}</span>
                     <button class="track-button solo">Solo</button>
                     <button class="track-button mute">Mute</button>
+                    <button class="track-button random-track">Random</button>
+                    <label>Oct:</label>
+                    <input type="number" class="track-octave-input" value="0" min="-4" max="4" style="width: 45px;" title="Octave Offset">
                     <label>Vel:</label>
                     <input type="range" class="track-velocity-slider" min="0" max="1" step="0.01" value="0.7">
                 </div>
@@ -1380,37 +1405,40 @@
             `;
             container.appendChild(trackDiv);
         }
-         container.querySelectorAll('.track-button.solo').forEach(btn => btn.addEventListener('click', () => btn.classList.toggle('active')));
-         container.querySelectorAll('.track-button.mute').forEach(btn => btn.addEventListener('click', () => btn.classList.toggle('active')));
+        
+        container.querySelectorAll('.track-button.solo').forEach(btn => btn.addEventListener('click', () => btn.classList.toggle('active')));
+        container.querySelectorAll('.track-button.mute').forEach(btn => btn.addEventListener('click', () => btn.classList.toggle('active')));
+        container.querySelectorAll('.track-button.random-track').forEach(btn => btn.addEventListener('click', (e) => randomizeTrack(e.target.closest('.song-maker-track'))));
     }
     
+    function randomizeTrack(track) {
+        const rootsInput = track.querySelector('.track-roots-input');
+        const intervalsInput = track.querySelector('.track-intervals-input');
+
+        const numRoots = Math.floor(Math.random() * 3) + 1; 
+        let roots = [];
+        for (let i = 0; i < numRoots; i++) {
+            roots.push(Math.floor(Math.random() * 15) - 7); 
+        }
+        rootsInput.value = roots.join(', ');
+
+        const numIntervals = Math.floor(Math.random() * 9) + 8; 
+        let intervals = [];
+        for (let i = 0; i < numIntervals; i++) {
+            const rand = Math.random();
+            if (rand < 0.75) { 
+                intervals.push(Math.floor(Math.random() * 8) + 1); 
+            } else if (rand < 0.9) { 
+                intervals.push('0');
+            } else { 
+                intervals.push('-');
+            }
+        }
+        intervalsInput.value = intervals.join(', ');
+    }
+
     function generateRandomSongData() {
-        const tracks = document.querySelectorAll('.song-maker-track');
-        tracks.forEach(track => {
-            const rootsInput = track.querySelector('.track-roots-input');
-            const intervalsInput = track.querySelector('.track-intervals-input');
-
-            const numRoots = Math.floor(Math.random() * 3) + 1; 
-            let roots = [];
-            for (let i = 0; i < numRoots; i++) {
-                roots.push(Math.floor(Math.random() * 15) - 7); 
-            }
-            rootsInput.value = roots.join(', ');
-
-            const numIntervals = Math.floor(Math.random() * 9) + 8; 
-            let intervals = [];
-            for (let i = 0; i < numIntervals; i++) {
-                const rand = Math.random();
-                if (rand < 0.75) { 
-                    intervals.push(Math.floor(Math.random() * 8) + 1); 
-                } else if (rand < 0.9) { 
-                    intervals.push('0');
-                } else { 
-                    intervals.push('-');
-                }
-            }
-            intervalsInput.value = intervals.join(', ');
-        });
+        document.querySelectorAll('.song-maker-track').forEach(randomizeTrack);
     }
 
     function setupSongMakerControls() {
@@ -1443,7 +1471,8 @@
             intervals: div.querySelector('.track-intervals-input').value,
             isMuted: div.querySelector('.track-button.mute').classList.contains('active'),
             isSolo: div.querySelector('.track-button.solo').classList.contains('active'),
-            velocity: div.querySelector('.track-velocity-slider').value
+            velocity: div.querySelector('.track-velocity-slider').value,
+            octaveOffset: parseInt(div.querySelector('.track-octave-input').value, 10) || 0
         }));
 
         const humanizer = {
@@ -1495,6 +1524,7 @@
                         div.querySelector('.track-roots-input').value = track.startingIntervals;
                         div.querySelector('.track-intervals-input').value = track.intervals;
                         div.querySelector('.track-velocity-slider').value = track.velocity;
+                        div.querySelector('.track-octave-input').value = track.octaveOffset || 0;
                         div.querySelector('.track-button.mute').classList.toggle('active', track.isMuted);
                         div.querySelector('.track-button.solo').classList.toggle('active', track.isSolo);
                     }
@@ -1542,7 +1572,8 @@
             intervals: div.querySelector('.track-intervals-input').value.split(',').map(s => s.trim()),
             isMuted: div.querySelector('.track-button.mute').classList.contains('active'),
             isSolo: div.querySelector('.track-button.solo').classList.contains('active'),
-            baseVelocity: parseFloat(div.querySelector('.track-velocity-slider').value) * 127
+            baseVelocity: parseFloat(div.querySelector('.track-velocity-slider').value) * 127,
+            octaveOffset: parseInt(div.querySelector('.track-octave-input').value, 10) || 0
         }));
 
         const isAnySolo = trackData.some(t => t.isSolo);
@@ -1580,7 +1611,9 @@
                         if (!isNaN(interval) && interval !== 0) {
                             const targetIndex = rootNoteIndexInPalette + (interval - (interval > 0 ? 1 : 0));
                             if (targetIndex >= 0 && targetIndex < scalePalette.length) {
-                                noteToPlay = scalePalette[targetIndex];
+                                let baseNote = scalePalette[targetIndex];
+                                let targetMidi = baseNote.midi + (track.octaveOffset * 12);
+                                noteToPlay = { midi: Math.max(0, Math.min(127, targetMidi)) };
                             }
                         }
                     }
