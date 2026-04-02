@@ -24,6 +24,9 @@
 
     const noteFrequencies = {};
     const ALL_NOTES_CHROMATIC = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    // EXPORT GLOBALLY FOR MODES.JS
+    window.ALL_NOTES_CHROMATIC = ALL_NOTES_CHROMATIC;
+
     const A4_FREQ = 440.0, A4_MIDI_NUMBER = 69;
     
     for (let octave = 0; octave < 9; octave++) { 
@@ -40,6 +43,9 @@
     const BASIC_SCALES = [ { name: "Ionian (Major)", steps: "2212221" }, { name: "Dorian", steps: "2122212" }, { name: "Phrygian", steps: "1222122" }, { name: "Lydian", steps: "2221221" }, { name: "Mixolydian", steps: "2212212" }, { name: "Aeolian (Nat. Minor)", steps: "2122122" }, { name: "Locrian", steps: "1221222" }, { name: "Harmonic Minor", steps: "2122131" }, { name: "Melodic Minor (Asc.)", steps: "2122221" }, { name: "Major Pentatonic", steps: "22323" }, { name: "Minor Pentatonic", steps: "32232" }, { name: "Blues", steps: "321132" }, { name: "Chromatic", steps: "111111111111"}, { name: "Whole Tone", steps: "222222"}, { name: "Diminished (WH)", steps: "21212121"}, { name: "Diminished (HW)", steps: "12121212"}, { name: "Custom", steps: ""} ];
     
     let PREDEFINED_SCALES = BASIC_SCALES;
+    // EXPORT FUNCTION TO ACCESS DYNAMIC PREDEFINED SCALES LIST FOR MODES.JS
+    window.getPredefinedScales = () => PREDEFINED_SCALES;
+
     let isZeitlerSetCurrent = false;
     let isZeitlerLoaded = false;
 
@@ -844,7 +850,12 @@
             button.addEventListener('click', () => playAndHighlightChord(triad.notes)); 
             chordButtonsDisplay.appendChild(button); 
         }); 
-        updateSemitoneSum(); 
+        updateSemitoneSum();
+
+        // EXPORT CUSTOM EVENT FOR MODES.JS OR OTHER EXTERNAL SCRIPTS
+        window.dispatchEvent(new CustomEvent('scaleFilterApplied', { 
+            detail: { rootNote, semisteps } 
+        }));
     }
     
     let activeChordHighlightTimeout; 
@@ -1678,6 +1689,21 @@
         document.getElementById('tempoInput').value = bpm; 
         effectiveBaseTempoMs = 60000 / bpm; 
     }
+
+    // EXPORT HELPER FUNCTION TO PROGRAMMATICALLY UPDATE ROOT/SCALE FROM EXTERNAL SCRIPTS
+    window.setMainAppScale = function(rootNote, steps) {
+        const rootSelect = document.getElementById('rootNoteSelect');
+        const stepsInput = document.getElementById('semistepsInput');
+        
+        if (rootSelect && stepsInput) {
+            rootSelect.value = rootNote;
+            stepsInput.value = steps;
+            
+            // Trigger the input event which handles the rest of the dropdown sync and UI updates
+            stepsInput.dispatchEvent(new Event('input'));
+            rootSelect.dispatchEvent(new Event('change'));
+        }
+    };
 
     function setupControls() {
         populateDropdowns(); setupTetrachordControls(); setupSongMakerControls();
