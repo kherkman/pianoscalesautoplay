@@ -7,6 +7,7 @@
     let isReverbOn = false, isDelayOn = false;
     let impulseResponseBuffer;
     let effectiveBaseTempoMs = 750;
+    let activeSampleSources = new Map(); // Tracks active nodes { releaseGain, sources } for each MIDI note
 
     const SOUND_DURATION = 1.8;
     const NOTE_RELATIVE_MAX_GAIN = 1.0;
@@ -155,6 +156,32 @@
         return true; 
     }
 
+    // Helper to completely stop the audio for a specific MIDI note when released early
+    function stopAudioForNote(midiNoteNum) {
+        if (midiNoteNum === null || !audioContext) return;
+        const activeNote = activeSampleSources.get(midiNoteNum);
+        
+        if (activeNote) {
+            const now = audioContext.currentTime;
+            
+            // Rapid fade out the main release gain to prevent audio clicking on release
+            activeNote.releaseGain.gain.cancelScheduledValues(now);
+            activeNote.releaseGain.gain.setValueAtTime(activeNote.releaseGain.gain.value, now);
+            activeNote.releaseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            
+            // Forcibly stop the sources slightly after the fade
+            activeNote.sources.forEach(source => {
+                try {
+                    source.stop(now + 0.15);
+                } catch(e) { /* ignore if naturally stopped */ }
+            });
+            
+            activeSampleSources.delete(midiNoteNum);
+        }
+    }
+    // EXPOSE GLOBAL FOR AUTOPLAY USAGE
+    window.stopAudioForNote = stopAudioForNote;
+
     // Helper to push highlighted notes to SheetMusic Canvas
     function updateSheetMusicHighlight() {
         if (window.SheetMusic) {
@@ -166,18 +193,90 @@
     function playNote(baseFrequency, gainScale = 1, midiNoteNum = null, isAutoPlayed = false) { 
         if (!initAudioContext() || !audioContext || !baseFrequency) return; 
         
+        // Ensure previously playing note of the same pitch is properly cleared/stopped 
+        if (midiNoteNum !== null) {
+            stopAudioForNote(midiNoteNum);
+        }
+
         const selectedSoundId = document.getElementById('soundTypeSelect').value; 
         const now = audioContext.currentTime; 
-        const noteGain = audioContext.createGain(); 
-        noteGain.connect(effectsInputNode); 
+        const velocity = Math.min(1.0, Math.max(0.01, gainScale)); // Normalize velocity (0-1)
         
+        const noteGain = audioContext.createGain(); 
+        
+        // Create an outer release gain layer that will be manipulated upon key release
+        const releaseGain = audioContext.createGain();
+        releaseGain.gain.setValueAtTime(1.0, now);
+        
+        noteGain.connect(releaseGain); 
+        releaseGain.connect(effectsInputNode);
+        
+        const trackedSources = [];
+
         if (loadedSampleBuffers.has(selectedSoundId)) { 
             const source = audioContext.createBufferSource(); 
             source.buffer = loadedSampleBuffers.get(selectedSoundId); 
             source.playbackRate.value = baseFrequency / C4_FREQ; 
-            source.connect(noteGain); 
-            source.start(now); 
+            
+            // --- DYNAMIC FILTER BASED ON VELOCITY ---
+            const filterNode = audioContext.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            const minCutoff = 400;    
+            const maxCutoff = 12000;  
+            const cutoffFreq = minCutoff + (maxCutoff - minCutoff) * Math.pow(velocity, 0.7);
+            filterNode.frequency.setValueAtTime(cutoffFreq, now);
+            
+            const minResonance = 0.7;
+            const maxResonance = 3.5;
+            const resonance = minResonance + (maxResonance - minResonance) * velocity;
+            filterNode.Q.setValueAtTime(resonance, now);
+            
+            let highShelfNode = null;
+            if (velocity > 0.5) {
+                highShelfNode = audioContext.createBiquadFilter();
+                highShelfNode.type = 'highshelf';
+                highShelfNode.frequency.setValueAtTime(2000, now);
+                const shelfGain = (velocity - 0.5) * 12; 
+                highShelfNode.gain.setValueAtTime(shelfGain, now);
+            }
+            
+            // --- DYNAMIC VOLUME ENVELOPE ---
+            const envelopeGain = audioContext.createGain();
+            const minAttack = 0.001;
+            const maxAttack = 0.05;
+            const attackTime = minAttack + (maxAttack - minAttack) * (1 - velocity);
+            
+            const minDecay = 0.05;
+            const maxDecay = 0.4;
+            const decayTime = minDecay + (maxDecay - minDecay) * (1 - velocity);
+            const sustainLevel = 0.3 + (velocity * 0.5); 
+            
+            envelopeGain.gain.setValueAtTime(0.001, now);
+            envelopeGain.gain.linearRampToValueAtTime(velocity, now + attackTime);
+            envelopeGain.gain.setTargetAtTime(velocity * sustainLevel, now + attackTime + decayTime, 0.15);
+            
+            source.connect(filterNode);
+            if (highShelfNode) {
+                filterNode.connect(highShelfNode);
+                highShelfNode.connect(envelopeGain);
+            } else {
+                filterNode.connect(envelopeGain);
+            }
+            envelopeGain.connect(noteGain);
+            
+            source.start(now);
+            
+            const sampleDuration = source.buffer.duration;
+            const stopTime = now + sampleDuration;
+            source.stop(stopTime); // Natural conclusion at the exact end of the sample buffer
+            
+            // Standard decay to prevent click when WAV audio strictly ends
+            envelopeGain.gain.setTargetAtTime(0.001, stopTime - 0.05, 0.05);
+            
+            trackedSources.push(source);
+            
         } else { 
+            // --- EXISTING SYNTHESIZER CODE FOR NON-WAV SOUNDS ---
             let soundDef = PREDEFINED_SOUNDS.find(s => s.id === selectedSoundId) || PREDEFINED_SOUNDS.find(s => s.id === "default_triangle") || PREDEFINED_SOUNDS[0]; 
             if (!soundDef) { console.error("Sound definition missing!"); return; } 
             
@@ -194,12 +293,15 @@
                 } 
                 
                 let initialFilterFreq = params.filter.fixedBaseFreq != null ? params.filter.fixedBaseFreq : baseFrequency * (params.filter.baseFreqFactor || 1); 
-                filterNode.frequency.setValueAtTime(initialFilterFreq, now); 
+                
+                const velAdjustedFreq = initialFilterFreq * (0.5 + velocity);
+                filterNode.frequency.setValueAtTime(velAdjustedFreq, now); 
                 
                 if (params.filter.envelope && Array.isArray(params.filter.envelope)) { 
                     params.filter.envelope.forEach(stage => { 
                         const targetTime = now + (stage.timeOffset || 0); 
-                        const value = typeof stage.valueCalc === 'function' ? stage.valueCalc(baseFrequency) : (stage.value || initialFilterFreq); 
+                        let value = typeof stage.valueCalc === 'function' ? stage.valueCalc(baseFrequency) : (stage.value || initialFilterFreq);
+                        value = value * (0.5 + velocity);
                         if (stage.type === 'set') filterNode.frequency.setValueAtTime(value, targetTime); 
                         else if (stage.type === 'lin') filterNode.frequency.linearRampToValueAtTime(value, targetTime); 
                         else if (stage.type === 'exp') filterNode.frequency.exponentialRampToValueAtTime(Math.max(0.001, value), targetTime); 
@@ -213,19 +315,26 @@
                 params.oscillators.forEach(oscDef => { 
                     const osc = audioContext.createOscillator(); 
                     osc.type = oscDef.type || 'sine'; 
-                    osc.frequency.setValueAtTime(baseFrequency * (oscDef.freqFactor || 1), now); 
-                    if (oscDef.detune) osc.detune.setValueAtTime(oscDef.detune, now); 
+                    
+                    const pitchVariation = 1 + ((velocity - 0.5) * 0.02); 
+                    osc.frequency.setValueAtTime(baseFrequency * (oscDef.freqFactor || 1) * pitchVariation, now); 
+                    
+                    if (oscDef.detune) osc.detune.setValueAtTime(oscDef.detune + (velocity * 5), now); 
                     const stopTime = now + SOUND_DURATION * (oscDef.stopFactor || 1.0); 
                     
-                    if (oscDef.gainFactor != null && oscDef.gainFactor !== 1.0) { 
+                    const oscGainMultiplier = oscDef.gainFactor || 1.0;
+                    const finalGain = velocity * oscGainMultiplier;
+                    
+                    if (finalGain !== 1.0 || oscDef.gainFactor != null) { 
                         const oscGainNode = audioContext.createGain(); 
-                        oscGainNode.gain.setValueAtTime(oscDef.gainFactor, now); 
+                        oscGainNode.gain.setValueAtTime(finalGain, now); 
                         osc.connect(oscGainNode).connect(lastNodeInOutChain); 
                     } else { 
                         osc.connect(lastNodeInOutChain); 
                     } 
                     osc.start(now); 
                     osc.stop(stopTime); 
+                    trackedSources.push(osc);
                 }); 
             } 
             
@@ -235,46 +344,59 @@
                 for (let i = 0; i < output.length; i++) { output[i] = (Math.random() * 2 - 1); } 
                 const noise = audioContext.createBufferSource(); 
                 noise.buffer = noiseBuffer; 
-                if (params.noiseSource.gainFactor != null && params.noiseSource.gainFactor !== 1.0) { 
+                
+                const noiseGainValue = (params.noiseSource.gainFactor != null ? params.noiseSource.gainFactor : 1.0) * velocity;
+                if (noiseGainValue !== 1.0) { 
                     const noiseGainNode = audioContext.createGain(); 
-                    noiseGainNode.gain.setValueAtTime(params.noiseSource.gainFactor, now); 
+                    noiseGainNode.gain.setValueAtTime(noiseGainValue, now); 
                     noise.connect(noiseGainNode).connect(lastNodeInOutChain); 
                 } else { 
                     noise.connect(lastNodeInOutChain); 
                 } 
                 noise.start(now); 
                 noise.stop(now + (params.noiseSource.duration || SOUND_DURATION)); 
+                trackedSources.push(noise);
             } 
         } 
         
-        const soundDefForEnv = PREDEFINED_SOUNDS.find(s => s.id === selectedSoundId) || PREDEFINED_SOUNDS.find(s=>s.id === "default_triangle"); 
-        const env = (soundDefForEnv && soundDefForEnv.params.envelope) || PREDEFINED_SOUNDS.find(s=>s.id === "default_triangle").params.envelope; 
-        const isSamplerSound = loadedSampleBuffers.has(selectedSoundId); 
-        const effectiveEnv = (isSamplerSound && (!soundDefForEnv || !soundDefForEnv.params.envelope)) ? { type: 'adsr', attackTime: 0.01, decayTime: 0.4, sustainLevel: 0.1, releaseConstant: 0.2 } : env; 
+        // --- APPLY STANDARD ENVELOPE ---
+        if (!loadedSampleBuffers.has(selectedSoundId)) {
+            const soundDefForEnv = PREDEFINED_SOUNDS.find(s => s.id === selectedSoundId) || PREDEFINED_SOUNDS.find(s=>s.id === "default_triangle"); 
+            const env = (soundDefForEnv && soundDefForEnv.params.envelope) || PREDEFINED_SOUNDS.find(s=>s.id === "default_triangle").params.envelope; 
+            
+            noteGain.gain.setValueAtTime(0, now); 
+            
+            if (env.type === 'piano') { 
+                noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale * (env.attackPeakFactor || 0.8), now + (env.attackTime || 0.005)); 
+                noteGain.gain.exponentialRampToValueAtTime(0.0001, now + SOUND_DURATION * (env.decayToExpMinTimeFactor || 0.8)); 
+            } else if (env.type === 'adsr') { 
+                noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + (env.attackTime || DEFAULT_ATTACK_TIME)); 
+                noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * (env.sustainLevel != null ? env.sustainLevel : DEFAULT_SUSTAIN_LEVEL), now + (env.attackTime || DEFAULT_ATTACK_TIME) + (env.decayTime || DEFAULT_DECAY_TIME), env.releaseConstant || DEFAULT_ADSR_RELEASE_CONSTANT ); 
+            } else if (env.type === 'pad') { 
+                noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale * (env.attackPeakFactor || 0.7), now + (env.attackTime || 0.3)); 
+                noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * (env.sustainTargetLevel != null ? env.sustainTargetLevel : 0.6), now + (env.attackTime || 0.3) + (env.decayStartOffset || 0.4), env.sustainTimeConstant || 0.2 ); 
+            } else if (env.type === 'simple_decay') { 
+                noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + (env.attackTime || 0.005)); 
+                noteGain.gain.exponentialRampToValueAtTime(0.0001, now + (env.decayTime || SOUND_DURATION * 0.95)); 
+            } else { 
+                noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + DEFAULT_ATTACK_TIME); 
+                noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * DEFAULT_SUSTAIN_LEVEL, now + DEFAULT_ATTACK_TIME + DEFAULT_DECAY_TIME, DEFAULT_ADSR_RELEASE_CONSTANT ); 
+            } 
+        }
+
+        // Register played sources internally so they can be aborted on Key Release
+        if (midiNoteNum !== null) {
+            activeSampleSources.set(midiNoteNum, {
+                releaseGain: releaseGain,
+                sources: trackedSources
+            });
+        }
         
-        noteGain.gain.setValueAtTime(0, now); 
-        
-        if (effectiveEnv.type === 'piano') { 
-            noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale * (effectiveEnv.attackPeakFactor || 0.8), now + (effectiveEnv.attackTime || 0.005)); 
-            noteGain.gain.exponentialRampToValueAtTime(0.0001, now + SOUND_DURATION * (effectiveEnv.decayToExpMinTimeFactor || 0.8)); 
-        } else if (effectiveEnv.type === 'adsr') { 
-            noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + (effectiveEnv.attackTime || DEFAULT_ATTACK_TIME)); 
-            noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * (effectiveEnv.sustainLevel != null ? effectiveEnv.sustainLevel : DEFAULT_SUSTAIN_LEVEL), now + (effectiveEnv.attackTime || DEFAULT_ATTACK_TIME) + (effectiveEnv.decayTime || DEFAULT_DECAY_TIME), effectiveEnv.releaseConstant || DEFAULT_ADSR_RELEASE_CONSTANT ); 
-        } else if (effectiveEnv.type === 'pad') { 
-            noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale * (effectiveEnv.attackPeakFactor || 0.7), now + (effectiveEnv.attackTime || 0.3)); 
-            noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * (effectiveEnv.sustainTargetLevel != null ? effectiveEnv.sustainTargetLevel : 0.6), now + (effectiveEnv.attackTime || 0.3) + (effectiveEnv.decayStartOffset || 0.4), effectiveEnv.sustainTimeConstant || 0.2 ); 
-        } else if (effectiveEnv.type === 'simple_decay') { 
-            noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + (effectiveEnv.attackTime || 0.005)); 
-            noteGain.gain.exponentialRampToValueAtTime(0.0001, now + (effectiveEnv.decayTime || SOUND_DURATION * 0.95)); 
-        } else { 
-            noteGain.gain.linearRampToValueAtTime(NOTE_RELATIVE_MAX_GAIN * gainScale, now + DEFAULT_ATTACK_TIME); 
-            noteGain.gain.setTargetAtTime( NOTE_RELATIVE_MAX_GAIN * gainScale * DEFAULT_SUSTAIN_LEVEL, now + DEFAULT_ATTACK_TIME + DEFAULT_DECAY_TIME, DEFAULT_ADSR_RELEASE_CONSTANT ); 
-        } 
-        
+        // --- MIDI OUTPUT (unchanged) ---
         if (isMidiOutEnabled && midiNoteNum !== null) { 
-            let velocity = isAutoPlayed ? (MIDI_BASE_VELOCITY + Math.floor(Math.random() * MIDI_VELOCITY_VARIATION_RANGE) - MIDI_VELOCITY_VARIATION_RANGE / 2) : 110; 
-            velocity = Math.max(1, Math.min(127, Math.round(velocity * gainScale))); 
-            sendMidiNoteOn(midiNoteNum, velocity); 
+            let velocityOut = isAutoPlayed ? (MIDI_BASE_VELOCITY + Math.floor(Math.random() * MIDI_VELOCITY_VARIATION_RANGE) - MIDI_VELOCITY_VARIATION_RANGE / 2) : Math.round(110 * gainScale); 
+            velocityOut = Math.max(1, Math.min(127, velocityOut)); 
+            sendMidiNoteOn(midiNoteNum, velocityOut); 
             const noteOffTimeout = setTimeout(() => { 
                 sendMidiNoteOff(midiNoteNum); 
                 activeMidiNotes.delete(midiNoteNum); 
@@ -384,6 +506,9 @@
             const handleRelease = () => { 
                 const midi = parseInt(keyElement.dataset.midi); 
                 userHeldNotes.delete(midi); 
+                
+                stopAudioForNote(midi); // Early-stop note audio upon release
+                
                 updateChordDisplay();
                 updateSheetMusicHighlight();
                 keyElement.classList.remove('pressed'); 
@@ -565,6 +690,8 @@
         songMakerPlaybackTimeouts = [];
         document.querySelectorAll('.key.auto-playing-note').forEach(k => k.classList.remove('auto-playing-note'));
         
+        // Immediately halt any actively playing sequence audio generated by the Song Maker
+        globalActiveMidiNotes.forEach(midi => stopAudioForNote(midi));
         globalActiveMidiNotes.clear();
         updateSheetMusicHighlight();
 
@@ -641,7 +768,6 @@
 
         activeTracks.forEach(track => {
             let currentTime = 0;
-            let lastNotePlayed = null;
 
             track.startingIntervals.forEach(startInterval => {
                 const startNoteIndex = mainRootNoteIndex + (startInterval - 1);
@@ -652,11 +778,14 @@
                      return; 
                 }
                 const rootNoteIndexInPalette = scalePalette.indexOf(rootNoteData);
+                let currentNoteEvent = null;
 
                 track.intervals.forEach(intervalStr => {
                     let noteToPlay = null;
                     if(intervalStr === '-') { 
-                        noteToPlay = lastNotePlayed;
+                        if (currentNoteEvent) {
+                            currentNoteEvent.duration += effectiveBaseTempoMs; // Effectively ties/holds the previous note
+                        }
                     } else {
                         const interval = parseInt(intervalStr, 10);
                         if (!isNaN(interval)) {
@@ -696,14 +825,15 @@
                             humanizedVelocity = Math.max(0, Math.min(1, humanizedVelocity + velOffset / 127));
                         }
 
-                        masterTimeline.push({
+                        currentNoteEvent = {
                             time: humanizedTime,
                             note: noteToPlay,
-                            velocity: humanizedVelocity
-                        });
-                        lastNotePlayed = noteToPlay;
-                    } else {
-                        lastNotePlayed = null; 
+                            velocity: humanizedVelocity,
+                            duration: effectiveBaseTempoMs // Default to 1 interval tick
+                        };
+                        masterTimeline.push(currentNoteEvent);
+                    } else if (intervalStr !== '-') {
+                        currentNoteEvent = null; // A rest breaks the hold chain
                     }
                     currentTime += effectiveBaseTempoMs;
                 });
@@ -723,26 +853,31 @@
                     const keyElement = document.getElementById('key' + event.note.idSuffix);
                     if (keyElement) {
                         keyElement.classList.add('auto-playing-note');
-                        const highlightTimeout = setTimeout(() => {
-                            keyElement.classList.remove('auto-playing-note');
-                            globalActiveMidiNotes.delete(event.note.midi);
-                            updateSheetMusicHighlight();
-                        }, effectiveBaseTempoMs * 0.9);
-                        songMakerPlaybackTimeouts.push(highlightTimeout);
                     }
-                } else {
-                    // Fallback cleanup for un-highlightable synthetic notes
-                    const unhighlightTimeout = setTimeout(() => {
-                        globalActiveMidiNotes.delete(event.note.midi);
-                        updateSheetMusicHighlight();
-                    }, effectiveBaseTempoMs * 0.9);
-                    songMakerPlaybackTimeouts.push(unhighlightTimeout);
                 }
+                
+                // Calculate physical duration for audio cutoff & visuals
+                const stopTime = event.duration * 0.95; 
+                
+                const stopTimeout = setTimeout(() => {
+                    if (!isSongMakerPlaying) return; 
+                    
+                    stopAudioForNote(event.note.midi); // End sequence hold dynamically
+                    globalActiveMidiNotes.delete(event.note.midi);
+                    updateSheetMusicHighlight();
+                    
+                    if (event.note.idSuffix) {
+                        const keyElement = document.getElementById('key' + event.note.idSuffix);
+                        if (keyElement) keyElement.classList.remove('auto-playing-note');
+                    }
+                }, stopTime);
+                songMakerPlaybackTimeouts.push(stopTimeout);
+
             }, event.time);
             songMakerPlaybackTimeouts.push(timeoutId);
         });
         
-        const totalDuration = masterTimeline.length > 0 ? Math.max(...masterTimeline.map(e => e.time)) + effectiveBaseTempoMs : 
+        const totalDuration = masterTimeline.length > 0 ? Math.max(...masterTimeline.map(e => e.time + e.duration)) : 
                               (activeTracks.length > 0 ? Math.max(...activeTracks.map(t => (t.startingIntervals.length * t.intervals.length) || 0)) * effectiveBaseTempoMs : effectiveBaseTempoMs);
 
         const endTimeout = setTimeout(() => {
@@ -1061,6 +1196,9 @@
             if (keyElement) keyElement.classList.add('pressed'); 
         } else if (command === 8 || (command === 9 && velocity === 0)) { 
             userHeldNotes.delete(noteNumber); 
+            
+            stopAudioForNote(noteNumber); // Early-stop audio upon MIDI note off
+            
             updateChordDisplay(); 
             updateSheetMusicHighlight();
             if (keyElement) keyElement.classList.remove('pressed'); 
@@ -1833,6 +1971,9 @@
             const keyData = keysData.find(k => k.note === noteName); 
             if (keyData) { 
                 userHeldNotes.delete(keyData.midi); 
+                
+                stopAudioForNote(keyData.midi); // Stop computer keyboard note early
+                
                 updateChordDisplay();
                 updateSheetMusicHighlight();
                 const keyElement = document.getElementById('key' + keyData.idSuffix); 
