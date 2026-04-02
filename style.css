@@ -362,12 +362,42 @@ h1 {
     font-weight: bold; color: var(--text-color); margin-right: auto;
 }
 
-.song-maker-track .track-button { font-size: 0.8em; padding: 4px 8px; }
-.song-maker-track .track-button.solo.active { background-color: #ff9800; }
-.song-maker-track .track-button.mute.active { background-color: #795548; }
-.song-maker-track .track-velocity-slider { width: 80px; }
+/* Updated Song Maker Track Controls */
+.song-maker-track .track-button { 
+    font-size: 0.8em; 
+    padding: 4px 8px; 
+    background-color: #5a5a5a; 
+    color: var(--text-color); 
+    border: 1px solid var(--control-border); 
+    border-radius: 4px; 
+    cursor: pointer;
+}
+.song-maker-track .track-button:hover { background-color: #6b6b6b; }
+.song-maker-track .track-button.solo.active { background-color: #ff9800; color: white; border-color: #e65100; }
+.song-maker-track .track-button.mute.active { background-color: #795548; color: white; border-color: #4e342e; }
+.song-maker-track .track-button.random-track:active { background-color: #4CAF50; border-color: #388E3C; color: white; }
+
+.song-maker-track .track-velocity-slider { width: 80px; cursor: pointer; }
+
+.song-maker-track .track-octave-input {
+    width: 45px; 
+    padding: 4px; 
+    text-align: center;
+    background-color: var(--control-bg); 
+    color: var(--text-color);
+    border: 1px solid var(--control-border); 
+    border-radius: 4px;
+}
+
 .song-maker-track .track-inputs { display: flex; flex-direction: column; gap: 8px; }
-.song-maker-track .track-inputs input { width: 95%; }
+.song-maker-track .track-inputs input { 
+    width: 95%; 
+    padding: 6px; 
+    background-color: var(--control-bg); 
+    color: var(--text-color);
+    border: 1px solid var(--control-border); 
+    border-radius: 4px;
+}
 
 .humanizer-controls {
     display: none; flex-wrap: wrap; gap: 10px; align-items: center;
