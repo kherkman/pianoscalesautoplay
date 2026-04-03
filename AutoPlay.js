@@ -403,6 +403,7 @@ window.AutoPlaySystem = (function() {
     function generateInvertedChordMelody(scalePalette, rootPitchClass) {
         if (!scalePalette || scalePalette.length === 0) return [];
 
+        // Build simple 3-note diatonic chords
         const diatonicChords = [];
         let rootIndex = scalePalette.findIndex(n => n.pitchClass === rootPitchClass && n.octave === 3);
         if (rootIndex === -1) rootIndex = scalePalette.findIndex(n => n.pitchClass === rootPitchClass);
@@ -418,10 +419,17 @@ window.AutoPlaySystem = (function() {
         }
         if (diatonicChords.length === 0) return [];
 
+        // Pick 2 to 6 chords and partition exactly 16 beats among them
         const numChords = Math.floor(Math.random() * 5) + 2; 
         let validSplits = [];
-        for(let i = 1; i < 16; i++) validSplits.push(i); 
-        validSplits.sort(() => Math.random() - 0.5);
+        for (let i = 1; i < 16; i++) validSplits.push(i); 
+        
+        // Fisher-Yates shuffle for safe randomization
+        for (let i = validSplits.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [validSplits[i], validSplits[j]] = [validSplits[j], validSplits[i]];
+        }
+        
         let splits = validSplits.slice(0, numChords - 1).sort((a,b) => a - b);
         let durations = [];
         let last = 0;
@@ -432,8 +440,7 @@ window.AutoPlaySystem = (function() {
         for (let c = 0; c < numChords; c++) {
             let baseChord;
             if (c === 0) {
-                baseChord = diatonicChords.find(ch => ch[0] && ch[0].pitchClass === rootPitchClass);
-                if (!baseChord) baseChord = diatonicChords[0];
+                baseChord = diatonicChords.find(ch => ch[0] && ch[0].pitchClass === rootPitchClass) || diatonicChords[0];
             } else {
                 baseChord = diatonicChords[Math.floor(Math.random() * diatonicChords.length)];
             }
@@ -473,32 +480,32 @@ window.AutoPlaySystem = (function() {
                 voicedChord = lowerBaseChord;
             }
 
+            // Strictly put the root pitch class at the bottom for the first chord
             if (c === 0 && voicedChord.length > 0) {
-                let rootNote = voicedChord.find(n => n.pitchClass === rootPitchClass);
-                if (rootNote) {
-                    let minMidi = Math.min(...voicedChord.map(n => n.midi));
-                    if (rootNote.midi > minMidi) {
-                        let lowerRootMidi = rootNote.midi - 12;
-                        let newRoot = scalePalette.find(p => p.midi === lowerRootMidi);
-                        if (newRoot) voicedChord = voicedChord.map(n => n === rootNote ? newRoot : n);
-                    }
-                } else {
-                    let pureRoot = scalePalette.find(n => n.pitchClass === rootPitchClass && n.midi >= 36 && n.midi <= 48) || scalePalette.find(n => n.pitchClass === rootPitchClass);
-                    if (pureRoot) voicedChord = [pureRoot];
-                }
+                let others = voicedChord.filter(n => n.pitchClass !== rootPitchClass);
+                let minMidi = others.length > 0 ? Math.min(...others.map(n => n.midi)) : 999;
+                
+                let rootCandidates = scalePalette.filter(n => n.pitchClass === rootPitchClass && n.midi < minMidi);
+                let lowRoot = rootCandidates[rootCandidates.length - 1]; // highest valid one below minMidi
+                if (!lowRoot) lowRoot = scalePalette.find(n => n.pitchClass === rootPitchClass);
+                
+                if (lowRoot) voicedChord = [lowRoot, ...others];
             }
 
             voicedChord.sort((a,b) => a.midi - b.midi);
             selectedChords.push(voicedChord);
         }
 
+        // Generate dynamic rhythms that strictly add up to `dur`
         const generateMelodyForChord = (chord, dur) => {
             let mel = [];
             let t = 0;
             const allowedDurs = [0.25, 0.5, 0.5, 1.0, 1.0, 1.5];
-            while (t < dur) {
+            let isFirstBeatOfChord = true;
+            
+            while (t < dur - 0.01) { // -0.01 prevents floating point infinitudes 
                 let d = allowedDurs[Math.floor(Math.random() * allowedDurs.length)];
-                if (t + d > dur) d = dur - t; 
+                if (t + d > dur - 0.01) d = dur - t; 
                 
                 let baseN = chord[Math.floor(Math.random() * chord.length)];
                 let upperMidi = baseN.midi;
@@ -506,7 +513,13 @@ window.AutoPlaySystem = (function() {
                 if(upperMidi > 80) upperMidi -= 12;
                 let upperN = scalePalette.find(p => p.midi === upperMidi) || baseN;
                 
-                mel.push({ offset: t, dur: d, note: upperN });
+                // Only strike the lower background chord once at the very start of the chord's beats.
+                // For all subsequent rhythm notes in this chord length, only play the melody.
+                let notesToPlay = isFirstBeatOfChord ? [...chord, upperN] : [upperN];
+                
+                mel.push({ offset: t, dur: d, notes: notesToPlay });
+                
+                isFirstBeatOfChord = false;
                 t += d;
             }
             return mel;
@@ -524,14 +537,13 @@ window.AutoPlaySystem = (function() {
         let finalMelodyBlocks = [];
         for (let rep = 0; rep < 4; rep++) {
             for (let c = 0; c < numChords; c++) {
-                let chord = selectedChords[c];
                 let isLast = (c === numChords - 1);
                 let melodyToPlay = (isLast && (rep === 1 || rep === 3)) ? altLastChordMelody : chordMelodies[c];
                 
                 melodyToPlay.forEach(m => {
                     finalMelodyBlocks.push({
                         isDualTrack: true, 
-                        notes: [...chord, m.note],
+                        notes: m.notes,
                         durationFactor: m.dur
                     });
                 });
@@ -772,6 +784,7 @@ window.AutoPlaySystem = (function() {
         if (currentMelodyNoteIndex >= currentMelody.length) { 
             currentMelodyNoteIndex = 0; 
             currentMelodyRepetitionCount++; 
+            // Because our inverted generator automatically builds out the full 4 repeats (64 total beats), we only need "1" structural repetition here.
             const repsForCurrentSegment = autoPlaySettings.isPlayingInvertedChord ? 1 : (autoPlaySettings.isPlayingDualTrack ? 4 : (isPlayingScaleRun || autoPlaySettings.isPlayingRepeatingChords || autoPlaySettings.currentSongSection === 'C' ? 1 : MELODY_REPETITIONS)); 
             
             if (currentMelodyRepetitionCount >= repsForCurrentSegment) { 
