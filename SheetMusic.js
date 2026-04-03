@@ -36,6 +36,13 @@ const SheetMusic = (function() {
         canvas = document.getElementById(canvasId);
         if (!canvas) return;
         ctx = canvas.getContext('2d');
+        
+        // Set initial dimensions for 3-octave mode (default)
+        canvas.height = 300;
+        canvas.style.height = '300px';
+        TOP_STAFF_Y = 80;
+        
+        render();
     }
 
     /**
@@ -165,6 +172,27 @@ const SheetMusic = (function() {
         ctx.shadowBlur = 0; // Reset shadow for next drawings
     }
 
+    function set88KeyMode(is88Key) {
+        if (!canvas) return;
+        if (is88Key) {
+            canvas.height = 400;
+            canvas.style.height = '400px';  // Add this
+            TOP_STAFF_Y = 100;
+        } else {
+            canvas.height = 300;
+            canvas.style.height = '300px';  // Add this
+            TOP_STAFF_Y = 80;
+        }
+        
+        // Tell the container section to recalculate its drop-down height
+        const sectionContent = canvas.closest('.section-content');
+        if (sectionContent && !sectionContent.classList.contains('hidden')) {
+            sectionContent.style.maxHeight = sectionContent.scrollHeight + 'px';
+        }
+        
+        render();
+    }
+
     function render() {
         if (!canvas || !ctx) return;
         
@@ -237,7 +265,10 @@ const SheetMusic = (function() {
             activeMidiNotes = new Set(midiNumbers);
             // requestAnimationFrame ensures smooth repainting without blocking the audio thread
             requestAnimationFrame(render);
-        }
+        },
+
+        // ADD THIS METHOD TO THE PUBLIC API
+        set88KeyMode: set88KeyMode
     };
 })();
 
