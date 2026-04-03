@@ -49,6 +49,7 @@ window.AutoPlaySystem = (function() {
     const REPEATING_CHORD_DURATION_FACTOR = 0.75; 
     const REPEATING_CHORD_DEGREES = [2, 4, 6]; 
     const DUAL_TRACK_PROBABILITY = 0.25;
+    const INVERTED_CHORD_PROBABILITY = 0.20;
 
     // --- STATE VARIABLES ---
     let autoPlayTimeoutId = null; 
@@ -68,6 +69,7 @@ window.AutoPlaySystem = (function() {
         isPlayingArpeggio: false, 
         isPlayingRepeatingChords: false, 
         isPlayingDualTrack: false,
+        isPlayingInvertedChord: false,
         currentSongSection: 'A', 
         currentSongSectionIndex: 0, 
         repeatingBassPattern: [], 
@@ -398,6 +400,147 @@ window.AutoPlaySystem = (function() {
         return finalMelody;
     }
 
+    function generateInvertedChordMelody(scalePalette, rootPitchClass) {
+        if (!scalePalette || scalePalette.length === 0) return [];
+
+        const diatonicChords = [];
+        let rootIndex = scalePalette.findIndex(n => n.pitchClass === rootPitchClass && n.octave === 3);
+        if (rootIndex === -1) rootIndex = scalePalette.findIndex(n => n.pitchClass === rootPitchClass);
+        if (rootIndex === -1) rootIndex = 0;
+
+        for (let i = 0; i < 7; i++) {
+            let baseIdx = rootIndex + i;
+            let chordNotes = [];
+            if (scalePalette[baseIdx]) chordNotes.push(scalePalette[baseIdx]);
+            if (scalePalette[baseIdx + 2]) chordNotes.push(scalePalette[baseIdx + 2]);
+            if (scalePalette[baseIdx + 4]) chordNotes.push(scalePalette[baseIdx + 4]);
+            if (chordNotes.length > 0) diatonicChords.push(chordNotes);
+        }
+        if (diatonicChords.length === 0) return [];
+
+        const numChords = Math.floor(Math.random() * 5) + 2; 
+        let validSplits = [];
+        for(let i = 1; i < 16; i++) validSplits.push(i); 
+        validSplits.sort(() => Math.random() - 0.5);
+        let splits = validSplits.slice(0, numChords - 1).sort((a,b) => a - b);
+        let durations = [];
+        let last = 0;
+        splits.forEach(s => { durations.push(s - last); last = s; });
+        durations.push(16 - last);
+
+        let selectedChords = [];
+        for (let c = 0; c < numChords; c++) {
+            let baseChord;
+            if (c === 0) {
+                baseChord = diatonicChords.find(ch => ch[0] && ch[0].pitchClass === rootPitchClass);
+                if (!baseChord) baseChord = diatonicChords[0];
+            } else {
+                baseChord = diatonicChords[Math.floor(Math.random() * diatonicChords.length)];
+            }
+            
+            let lowerBaseChord = baseChord.map(n => {
+                let lowerMidi = n.midi;
+                while (lowerMidi > 55) lowerMidi -= 12;
+                while (lowerMidi < 36) lowerMidi += 12;
+                let found = scalePalette.find(p => p.midi === lowerMidi);
+                return found || n;
+            });
+
+            let voicedChord = [];
+            if (c > 0) {
+                let prevChord = selectedChords[c - 1];
+                lowerBaseChord.forEach(n => {
+                    let shared = prevChord.find(p => p.pitchClass === n.pitchClass);
+                    if (shared) {
+                        voicedChord.push(shared);
+                    } else {
+                        let prevCenter = prevChord.reduce((sum, p) => sum + p.midi, 0) / prevChord.length;
+                        let bestNote = n;
+                        let minDiff = 999;
+                        for (let oct = -2; oct <= 2; oct++) {
+                            let testMidi = n.midi + oct * 12;
+                            let diff = Math.abs(testMidi - prevCenter);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                let candidate = scalePalette.find(p => p.midi === testMidi);
+                                if (candidate) bestNote = candidate;
+                            }
+                        }
+                        voicedChord.push(bestNote);
+                    }
+                });
+            } else {
+                voicedChord = lowerBaseChord;
+            }
+
+            if (c === 0 && voicedChord.length > 0) {
+                let rootNote = voicedChord.find(n => n.pitchClass === rootPitchClass);
+                if (rootNote) {
+                    let minMidi = Math.min(...voicedChord.map(n => n.midi));
+                    if (rootNote.midi > minMidi) {
+                        let lowerRootMidi = rootNote.midi - 12;
+                        let newRoot = scalePalette.find(p => p.midi === lowerRootMidi);
+                        if (newRoot) voicedChord = voicedChord.map(n => n === rootNote ? newRoot : n);
+                    }
+                } else {
+                    let pureRoot = scalePalette.find(n => n.pitchClass === rootPitchClass && n.midi >= 36 && n.midi <= 48) || scalePalette.find(n => n.pitchClass === rootPitchClass);
+                    if (pureRoot) voicedChord = [pureRoot];
+                }
+            }
+
+            voicedChord.sort((a,b) => a.midi - b.midi);
+            selectedChords.push(voicedChord);
+        }
+
+        const generateMelodyForChord = (chord, dur) => {
+            let mel = [];
+            let t = 0;
+            const allowedDurs = [0.25, 0.5, 0.5, 1.0, 1.0, 1.5];
+            while (t < dur) {
+                let d = allowedDurs[Math.floor(Math.random() * allowedDurs.length)];
+                if (t + d > dur) d = dur - t; 
+                
+                let baseN = chord[Math.floor(Math.random() * chord.length)];
+                let upperMidi = baseN.midi;
+                while(upperMidi < 60) upperMidi += 12;
+                if(upperMidi > 80) upperMidi -= 12;
+                let upperN = scalePalette.find(p => p.midi === upperMidi) || baseN;
+                
+                mel.push({ offset: t, dur: d, note: upperN });
+                t += d;
+            }
+            return mel;
+        };
+
+        let chordMelodies = [];
+        let altLastChordMelody = [];
+        for (let c = 0; c < numChords; c++) {
+            chordMelodies.push(generateMelodyForChord(selectedChords[c], durations[c]));
+            if (c === numChords - 1) {
+                altLastChordMelody = generateMelodyForChord(selectedChords[c], durations[c]);
+            }
+        }
+
+        let finalMelodyBlocks = [];
+        for (let rep = 0; rep < 4; rep++) {
+            for (let c = 0; c < numChords; c++) {
+                let chord = selectedChords[c];
+                let isLast = (c === numChords - 1);
+                let melodyToPlay = (isLast && (rep === 1 || rep === 3)) ? altLastChordMelody : chordMelodies[c];
+                
+                melodyToPlay.forEach(m => {
+                    finalMelodyBlocks.push({
+                        isDualTrack: true, 
+                        notes: [...chord, m.note],
+                        durationFactor: m.dur
+                    });
+                });
+            }
+        }
+
+        return finalMelodyBlocks;
+    }
+
     function generateRepeatingBassPattern(scalePalette, rootPitchClass, patternLength = 4) { 
         const bassPattern = []; 
         let startNote = scalePalette.find(n => n.pitchClass === rootPitchClass && n.octave === 3) || scalePalette.find(n => n.pitchClass === rootPitchClass && n.octave === 2) || (scalePalette.length > 0 ? scalePalette[0] : null); 
@@ -629,7 +772,7 @@ window.AutoPlaySystem = (function() {
         if (currentMelodyNoteIndex >= currentMelody.length) { 
             currentMelodyNoteIndex = 0; 
             currentMelodyRepetitionCount++; 
-            const repsForCurrentSegment = autoPlaySettings.isPlayingDualTrack ? 4 : (isPlayingScaleRun || autoPlaySettings.isPlayingRepeatingChords || autoPlaySettings.currentSongSection === 'C' ? 1 : MELODY_REPETITIONS); 
+            const repsForCurrentSegment = autoPlaySettings.isPlayingInvertedChord ? 1 : (autoPlaySettings.isPlayingDualTrack ? 4 : (isPlayingScaleRun || autoPlaySettings.isPlayingRepeatingChords || autoPlaySettings.currentSongSection === 'C' ? 1 : MELODY_REPETITIONS)); 
             
             if (currentMelodyRepetitionCount >= repsForCurrentSegment) { 
                 currentMelodyRepetitionCount = 0; 
@@ -640,7 +783,7 @@ window.AutoPlaySystem = (function() {
                     isPlayingScaleRun = false; 
                     currentTranspositionCycleIndex = (currentTranspositionCycleIndex + 1) % TRANSPOSITION_LEVEL_SEQUENCE.length; 
                     if (currentTranspositionCycleIndex === 0) autoPlaySettings.currentSongSectionIndex = (autoPlaySettings.currentSongSectionIndex + 1) % SONG_STRUCTURE.length; 
-                } else if (Math.random() < SCALE_RUN_PROBABILITY && !autoPlaySettings.isPlayingDualTrack && !autoPlaySettings.isPlayingRepeatingChords && autoPlaySettings.currentSongSection !== 'C') { 
+                } else if (Math.random() < SCALE_RUN_PROBABILITY && !autoPlaySettings.isPlayingDualTrack && !autoPlaySettings.isPlayingInvertedChord && !autoPlaySettings.isPlayingRepeatingChords && autoPlaySettings.currentSongSection !== 'C') { 
                     const scaleRun = generateScaleRun(); 
                     if (scaleRun.length > 0) { 
                         currentMelody = scaleRun; 
@@ -648,6 +791,7 @@ window.AutoPlaySystem = (function() {
                         autoPlaySettings.isPlayingArpeggio = false; 
                         autoPlaySettings.isPlayingRepeatingChords = false; 
                         autoPlaySettings.isPlayingDualTrack = false;
+                        autoPlaySettings.isPlayingInvertedChord = false;
                     } else { 
                         isPlayingScaleRun = false; 
                         currentTranspositionCycleIndex = (currentTranspositionCycleIndex + 1) % TRANSPOSITION_LEVEL_SEQUENCE.length; 
@@ -670,15 +814,19 @@ window.AutoPlaySystem = (function() {
                         autoPlaySettings.isPlayingArpeggio = false; 
                         autoPlaySettings.isPlayingRepeatingChords = false; 
                         autoPlaySettings.isPlayingDualTrack = false;
+                        autoPlaySettings.isPlayingInvertedChord = false;
                         autoPlaySettings.repeatingBassPattern = []; 
                         autoPlaySettings.currentRepeatingBassIndex = 0; 
                         
-                        if (Math.random() < DUAL_TRACK_PROBABILITY) {
+                        if (Math.random() < INVERTED_CHORD_PROBABILITY) {
+                            originalGeneratedMelody = generateInvertedChordMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass);
+                            autoPlaySettings.isPlayingInvertedChord = (originalGeneratedMelody.length > 0);
+                        } else if (Math.random() < DUAL_TRACK_PROBABILITY) {
                             originalGeneratedMelody = generateDualTrackProgression(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass);
                             autoPlaySettings.isPlayingDualTrack = (originalGeneratedMelody.length > 0);
                         }
 
-                        if (!autoPlaySettings.isPlayingDualTrack) {
+                        if (!autoPlaySettings.isPlayingDualTrack && !autoPlaySettings.isPlayingInvertedChord) {
                             if (currentSectionType === 'A') { 
                                 if (Math.random() < ARPEGGIO_PROBABILITY) { 
                                     originalGeneratedMelody = generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); 
@@ -708,13 +856,17 @@ window.AutoPlaySystem = (function() {
                     if (currentMelody.length === 0) { 
                         const currentSectionType = SONG_STRUCTURE[autoPlaySettings.currentSongSectionIndex]; 
                         autoPlaySettings.isPlayingDualTrack = false;
+                        autoPlaySettings.isPlayingInvertedChord = false;
 
-                        if (Math.random() < DUAL_TRACK_PROBABILITY) {
+                        if (Math.random() < INVERTED_CHORD_PROBABILITY) {
+                            originalGeneratedMelody = generateInvertedChordMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass);
+                            autoPlaySettings.isPlayingInvertedChord = (originalGeneratedMelody.length > 0);
+                        } else if (Math.random() < DUAL_TRACK_PROBABILITY) {
                             originalGeneratedMelody = generateDualTrackProgression(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass);
                             autoPlaySettings.isPlayingDualTrack = (originalGeneratedMelody.length > 0);
                         }
 
-                        if (!autoPlaySettings.isPlayingDualTrack) {
+                        if (!autoPlaySettings.isPlayingDualTrack && !autoPlaySettings.isPlayingInvertedChord) {
                             if (currentSectionType === 'A') { 
                                 originalGeneratedMelody = (Math.random() < ARPEGGIO_PROBABILITY) ? generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength) : generateRandomMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.isMonorhythmic, autoPlaySettings.currentMelodyLength); 
                                 autoPlaySettings.isPlayingArpeggio = (originalGeneratedMelody[0] && originalGeneratedMelody[0].durationFactor === ARPEGGIO_NOTE_DURATION_FACTOR); 
@@ -771,15 +923,19 @@ window.AutoPlaySystem = (function() {
         autoPlaySettings.isPlayingArpeggio = false; 
         autoPlaySettings.isPlayingRepeatingChords = false; 
         autoPlaySettings.isPlayingDualTrack = false;
+        autoPlaySettings.isPlayingInvertedChord = false;
         autoPlaySettings.repeatingBassPattern = []; 
         autoPlaySettings.currentRepeatingBassIndex = 0; 
         
-        if (Math.random() < DUAL_TRACK_PROBABILITY) {
+        if (Math.random() < INVERTED_CHORD_PROBABILITY) {
+            originalGeneratedMelody = generateInvertedChordMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass);
+            autoPlaySettings.isPlayingInvertedChord = (originalGeneratedMelody.length > 0);
+        } else if (Math.random() < DUAL_TRACK_PROBABILITY) {
             originalGeneratedMelody = generateDualTrackProgression(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass);
             autoPlaySettings.isPlayingDualTrack = (originalGeneratedMelody.length > 0);
         }
 
-        if (!autoPlaySettings.isPlayingDualTrack) {
+        if (!autoPlaySettings.isPlayingDualTrack && !autoPlaySettings.isPlayingInvertedChord) {
             if (initialSectionType === 'A') { 
                 if (Math.random() < ARPEGGIO_PROBABILITY) { 
                     originalGeneratedMelody = generateArpeggioMelody(fixedOriginalScalePalette, autoPlaySettings.originalRootPitchClass, autoPlaySettings.currentMelodyLength); 
@@ -832,6 +988,7 @@ window.AutoPlaySystem = (function() {
         autoPlaySettings.isPlayingArpeggio = false; 
         autoPlaySettings.isPlayingRepeatingChords = false; 
         autoPlaySettings.isPlayingDualTrack = false;
+        autoPlaySettings.isPlayingInvertedChord = false;
         autoPlaySettings.repeatingBassPattern = []; 
         currentArpeggioBassNote = null; 
         
