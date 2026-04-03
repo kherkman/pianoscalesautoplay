@@ -84,13 +84,16 @@ h1 {
 .section-content {
     padding: 10px;
     transition: all 0.3s ease-out;
-    overflow: hidden;
+    overflow: visible; /* Change from 'hidden' to 'visible' */
+    height: auto; /* Add this */
+    max-height: none !important; /* Override the hidden class */
 }
 
 .section-content.hidden {
     padding-top: 0;
     padding-bottom: 0;
-    max-height: 0 !important; /* Use max-height for transition */
+    max-height: 0 !important;
+    overflow: hidden; /* Only hide when collapsed */
 }
 
 /* Drag and Drop Styles */
@@ -339,6 +342,8 @@ h1 {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    overflow: visible; 
+    height: auto; 
 }
 
 .song-maker-master-controls {
@@ -347,7 +352,12 @@ h1 {
 }
 
 .song-maker-tracks-container {
-    display: flex; flex-direction: column; gap: 15px; max-height: 400px; overflow-y: auto; padding-right: 5px;
+    display: flex; 
+    flex-direction: column; 
+    gap: 15px; 
+    overflow-y: visible;
+    height: auto; 
+    min-height: 200px; 
 }
 
 .song-maker-track {
@@ -464,7 +474,7 @@ h1 {
 
 #sheetMusicCanvas {
     display: block;
-    height: 250px;
+    /* Height removed so JavaScript can dynamically adjust it for 88 keys */
     background-color: transparent; /* drawn on the container's off-white */
     margin: 0 auto;
 }
