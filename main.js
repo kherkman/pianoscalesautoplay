@@ -1121,7 +1121,7 @@
         }
     }
     
-    function populateScaleDropdowns() { 
+    function populateScaleDropdowns(filterTerm = '') { 
         const rootNoteSelect = document.getElementById('rootNoteSelect'); 
         const currentRoot = rootNoteSelect.value; 
         rootNoteSelect.innerHTML = ''; 
@@ -1134,9 +1134,17 @@
         rootNoteSelect.value = ALL_NOTES_CHROMATIC.includes(currentRoot) ? currentRoot : "C"; 
         
         const scaleSelect = document.getElementById('scaleSelect'); 
-        const currentScaleSteps = scaleSelect.value; 
+        let currentScaleSteps = document.getElementById('semistepsInput').value; 
         scaleSelect.innerHTML = ''; 
-        PREDEFINED_SCALES.forEach(scale => { 
+        
+        const cleanFilter = filterTerm.trim().toLowerCase();
+        const filteredScales = PREDEFINED_SCALES.filter(scale => {
+            if (!cleanFilter) return true;
+            if (scale.name === "Custom") return true;
+            return scale.name.toLowerCase().includes(cleanFilter) || scale.steps.includes(cleanFilter);
+        });
+
+        filteredScales.forEach(scale => { 
             const option = document.createElement('option'); 
             option.value = scale.steps; 
             option.textContent = scale.steps ? `${scale.name} (${scale.steps})` : scale.name; 
@@ -1144,19 +1152,31 @@
         }); 
         
         let foundSelected = false; 
-        const ionianIndex = PREDEFINED_SCALES.findIndex(s => s.name === "Ionian (Major)" || s.name === "Ionian"); 
-        for(let i=0; i < scaleSelect.options.length; i++){ 
-            if(scaleSelect.options[i].value === currentScaleSteps){ 
-                scaleSelect.selectedIndex = i; 
-                foundSelected = true; 
-                break; 
+        if (currentScaleSteps) {
+            for(let i=0; i < scaleSelect.options.length; i++){ 
+                if(scaleSelect.options[i].value === currentScaleSteps){ 
+                    scaleSelect.selectedIndex = i; 
+                    foundSelected = true; 
+                    break; 
+                } 
             } 
-        } 
+        }
+        
         if(!foundSelected && scaleSelect.options.length > 0){ 
-            scaleSelect.selectedIndex = ionianIndex !== -1 ? ionianIndex : 0; 
+            if (!filterTerm) {
+                const ionianIndex = filteredScales.findIndex(s => s.name === "Ionian (Major)" || s.name === "Ionian"); 
+                scaleSelect.selectedIndex = ionianIndex !== -1 ? ionianIndex : 0; 
+                document.getElementById('semistepsInput').value = scaleSelect.value;
+            } else {
+                // Keep visually synchronized placeholder context when searching, without destructive override of input state
+                const tempOpt = document.createElement('option');
+                tempOpt.value = currentScaleSteps;
+                tempOpt.textContent = `Active: ${currentScaleSteps || 'Custom'}`;
+                tempOpt.disabled = true;
+                tempOpt.selected = true;
+                scaleSelect.insertBefore(tempOpt, scaleSelect.firstChild);
+            }
         } 
-        if(scaleSelect.value) document.getElementById('semistepsInput').value = scaleSelect.value; 
-        else if (scaleSelect.options.length > 0) document.getElementById('semistepsInput').value = scaleSelect.options[0].value; 
     }
     
     function updateSamplerOptionInSelect(selectAfterAdding = false) { 
@@ -1205,6 +1225,7 @@
         const toggleBtn = document.getElementById('scaleSetToggleBtn'); 
         const scaleSelect = document.getElementById('scaleSelect'); 
         const semistepsInput = document.getElementById('semistepsInput'); 
+        const scaleSearchInput = document.getElementById('scaleSearchInput');
         
         if (!isZeitlerLoaded && typeof ZEITLER_SCALES_DATA !== 'undefined') {
             ZEITLER_SCALES = ZEITLER_SCALES_DATA;
@@ -1224,6 +1245,7 @@
             toggleBtn.textContent = 'Zeitler'; 
         } 
         
+        if (scaleSearchInput) scaleSearchInput.value = ''; // Reset filter input context
         populateScaleDropdowns(); 
         
         if (scaleSelect.options.length > 0) { 
@@ -1335,14 +1357,27 @@
 
     function setupControls() {
         populateDropdowns(); setupTetrachordControls();
-        const elements = { rootNoteSelect: 'rootNoteSelect', scaleSelect: 'scaleSelect', semistepsInput: 'semistepsInput', randomRootBtn: 'randomRootBtn', randomScaleBtn: 'randomScaleBtn', autoPlayBtn: 'autoPlayBtn', scaleSetToggleBtn: 'scaleSetToggleBtn', loadJsScalesBtn: 'loadJsScalesBtn', toggle88KeysBtn: 'toggle88KeysBtn', exportScalesBtn: 'exportScalesBtn', importScalesBtn: 'importScalesBtn', scalesFileInput: 'scalesFileInput', exportSoundsBtn: 'exportSoundsBtn', importSoundsBtn: 'importSoundsBtn', soundsFileInput: 'soundsFileInput', midiOutToggleBtn: 'midiOutToggleBtn', midiOutSelect: 'midiOutSelect', midiInToggleBtn: 'midiInToggleBtn', midiInSelect: 'midiInSelect', loadSampleBtn: 'loadSampleBtn', sampleFileInput: 'sampleFileInput', volumeSlider: 'volumeSlider', tempoSlider: 'tempoSlider', tempoInput: 'tempoInput', reverbToggleBtn: 'reverbToggleBtn', reverbMixSlider: 'reverbMixSlider', delayToggleBtn: 'delayToggleBtn', delayMixSlider: 'delayMixSlider', delayTimeSlider: 'delayTimeSlider', delayFeedbackSlider: 'delayFeedbackSlider' };
+        const elements = { rootNoteSelect: 'rootNoteSelect', scaleSearchInput: 'scaleSearchInput', scaleSelect: 'scaleSelect', semistepsInput: 'semistepsInput', randomRootBtn: 'randomRootBtn', randomScaleBtn: 'randomScaleBtn', autoPlayBtn: 'autoPlayBtn', scaleSetToggleBtn: 'scaleSetToggleBtn', loadJsScalesBtn: 'loadJsScalesBtn', toggle88KeysBtn: 'toggle88KeysBtn', exportScalesBtn: 'exportScalesBtn', importScalesBtn: 'importScalesBtn', scalesFileInput: 'scalesFileInput', exportSoundsBtn: 'exportSoundsBtn', importSoundsBtn: 'importSoundsBtn', soundsFileInput: 'soundsFileInput', midiOutToggleBtn: 'midiOutToggleBtn', midiOutSelect: 'midiOutSelect', midiInToggleBtn: 'midiInToggleBtn', midiInSelect: 'midiInSelect', loadSampleBtn: 'loadSampleBtn', sampleFileInput: 'sampleFileInput', volumeSlider: 'volumeSlider', tempoSlider: 'tempoSlider', tempoInput: 'tempoInput', reverbToggleBtn: 'reverbToggleBtn', reverbMixSlider: 'reverbMixSlider', delayToggleBtn: 'delayToggleBtn', delayMixSlider: 'delayMixSlider', delayTimeSlider: 'delayTimeSlider', delayFeedbackSlider: 'delayFeedbackSlider' };
         for(let key in elements) { elements[key] = document.getElementById(elements[key]); }
 
         elements.rootNoteSelect.addEventListener('change', applyScaleFilter);
         elements.scaleSelect.addEventListener('change', () => { elements.semistepsInput.value = elements.scaleSelect.value; applyScaleFilter(); });
         elements.semistepsInput.addEventListener('input', () => { const matchedScale = PREDEFINED_SCALES.find(s => s.steps === elements.semistepsInput.value); if (matchedScale) { elements.scaleSelect.value = matchedScale.steps; } else { for (let i = 0; i < elements.scaleSelect.options.length; i++) { if (elements.scaleSelect.options[i].text === "Custom") { elements.scaleSelect.selectedIndex = i; break;}}} applyScaleFilter(); });
         elements.randomRootBtn.addEventListener('click', () => { elements.rootNoteSelect.value = ALL_NOTES_CHROMATIC[Math.floor(Math.random() * ALL_NOTES_CHROMATIC.length)]; applyScaleFilter(); });
-        elements.randomScaleBtn.addEventListener('click', () => { const actualScales = PREDEFINED_SCALES.filter(s => s.name !== "Custom" || s.steps !== ""); const randomIdx = Math.floor(Math.random() * actualScales.length); elements.scaleSelect.value = actualScales[randomIdx].steps; elements.semistepsInput.value = actualScales[randomIdx].steps; applyScaleFilter(); });
+        
+        elements.randomScaleBtn.addEventListener('click', () => { 
+            elements.scaleSearchInput.value = ''; 
+            populateScaleDropdowns(''); 
+            const actualScales = PREDEFINED_SCALES.filter(s => s.name !== "Custom" || s.steps !== ""); 
+            const randomIdx = Math.floor(Math.random() * actualScales.length); 
+            elements.scaleSelect.value = actualScales[randomIdx].steps; 
+            elements.semistepsInput.value = actualScales[randomIdx].steps; 
+            applyScaleFilter(); 
+        });
+
+        elements.scaleSearchInput.addEventListener('input', (event) => {
+            populateScaleDropdowns(event.target.value);
+        });
         
         elements.autoPlayBtn.addEventListener('click', () => {
             if (window.AutoPlaySystem) window.AutoPlaySystem.toggle();
@@ -1388,6 +1423,9 @@
         // Let the user switch out of this safely later
         document.getElementById('scaleSetToggleBtn').textContent = 'Reset to Basic';
         isZeitlerSetCurrent = false;
+
+        const scaleSearchInput = document.getElementById('scaleSearchInput');
+        if (scaleSearchInput) scaleSearchInput.value = ''; // Reset input text
 
         populateScaleDropdowns();
         const scaleSelect = document.getElementById('scaleSelect');
